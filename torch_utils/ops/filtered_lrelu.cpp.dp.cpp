@@ -6,9 +6,12 @@
 // distribution of this software and related documentation without an express
 // license agreement from NVIDIA CORPORATION is strictly prohibited.
 
+#include <sycl/sycl.hpp>
+#include <dpct/dpct.hpp>
 #include <torch/extension.h>
-#include <ATen/cuda/CUDAContext.h>
-#include <c10/cuda/CUDAGuard.h>
+//#include <ATen/cuda/CUDAContext.h>
+//#include <c10/cuda/CUDAGuard.h>
+#include "utils.h"
 #include "filtered_lrelu.h"
 
 //------------------------------------------------------------------------
@@ -18,8 +21,8 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
     int up, int down, int px0, int px1, int py0, int py1, int sx, int sy, float gain, float slope, float clamp, bool flip_filters, bool writeSigns)
 {
     // Set CUDA device.
-    TORCH_CHECK(x.is_cuda(), "x must reside on CUDA device");
-    const at::cuda::OptionalCUDAGuard device_guard(device_of(x));
+    TORCH_CHECK(x.is_xpu(), "x must reside on XPU device");
+    const at::OptionalDeviceGuard device_guard(device_of(x)); // const at::cuda::OptionalCUDAGuard device_guard(device_of(x));
 
     // Validate arguments.
     TORCH_CHECK(fu.device() == x.device() && fd.device() == x.device() && b.device() == x.device(), "all input tensors must reside on the same device");
@@ -39,16 +42,21 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
 
     // Figure out how much shared memory is available on the device.
     int maxSharedBytes = 0;
-    AT_CUDA_CHECK(cudaDeviceGetAttribute(&maxSharedBytes, cudaDevAttrMaxSharedMemoryPerBlockOptin, x.device().index()));
+    // AT_CUDA_CHECK(cudaDeviceGetAttribute(&maxSharedBytes, cudaDevAttrMaxSharedMemoryPerBlockOptin, x.device().index()));
     int sharedKB = maxSharedBytes >> 10;
 
     // Populate enough launch parameters to check if a CUDA kernel exists.
     filtered_lrelu_kernel_params p;
     p.up      = up;
     p.down    = down;
-    p.fuShape = make_int2((int)fu.size(-1), fu.dim() == 2 ? (int)fu.size(0) : 0); // shape [n, 0] indicates separable filter.
-    p.fdShape = make_int2((int)fd.size(-1), fd.dim() == 2 ? (int)fd.size(0) : 0);
-    filtered_lrelu_kernel_spec test_spec = choose_filtered_lrelu_kernel<float, int32_t, false, false>(p, sharedKB);
+    p.fuShape = sycl::int2((int)fu.size(-1),
+                           fu.dim() == 2
+                               ? (int)fu.size(0)
+                               : 0); // shape [n, 0] indicates separable filter.
+    p.fdShape =
+        sycl::int2((int)fd.size(-1), fd.dim() == 2 ? (int)fd.size(0) : 0);
+    filtered_lrelu_kernel_spec test_spec =
+        choose_filtered_lrelu_kernel<float, int32_t, false, false>(p, sharedKB);
     if (!test_spec.exec)
     {
         // No kernel found - return empty tensors and indicate missing kernel with return code of -1.
@@ -113,33 +121,57 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
     p.s         = (readSigns || writeSigns) ? s.data_ptr<unsigned char>() : 0;
     p.fu        = fu.data_ptr<float>();
     p.fd        = fd.data_ptr<float>();
-    p.pad0      = make_int2(px0, py0);
-    p.gain      = gain;
+    p.pad0 = sycl::int2(px0, py0);
+    p.gain = gain;
     p.slope     = slope;
     p.clamp     = clamp;
     p.flip      = (flip_filters) ? 1 : 0;
-    p.xShape    = make_int4((int)x.size(3), (int)x.size(2), (int)x.size(1), (int)x.size(0));
-    p.yShape    = make_int4((int)y.size(3), (int)y.size(2), (int)y.size(1), (int)y.size(0));
-    p.sShape    = (readSigns || writeSigns) ? make_int2((int)s.size(3), (int)s.size(2)) : make_int2(0, 0); // Width is in bytes. Contiguous.
-    p.sOfs      = make_int2(sx, sy);
-    p.swLimit   = (sw_active + 3) >> 2; // Rounded up to bytes.
+    p.xShape = sycl::int4((int)x.size(3), (int)x.size(2), (int)x.size(1),
+                          (int)x.size(0));
+    p.yShape = sycl::int4((int)y.size(3), (int)y.size(2), (int)y.size(1),
+                          (int)y.size(0));
+    p.sShape = (readSigns || writeSigns)
+                   ? sycl::int2((int)s.size(3), (int)s.size(2))
+                   : sycl::int2(0, 0); // Width is in bytes. Contiguous.
+    p.sOfs = sycl::int2(sx, sy);
+    p.swLimit = (sw_active + 3) >> 2; // Rounded up to bytes.
 
     // x, y, b strides are in bytes.
-    p.xStride   = make_longlong4(sz * x.stride(3), sz * x.stride(2), sz * x.stride(1), sz * x.stride(0));
-    p.yStride   = make_longlong4(sz * y.stride(3), sz * y.stride(2), sz * y.stride(1), sz * y.stride(0));
-    p.bStride   = sz * b.stride(0);
+    p.xStride = sycl::long4(sz * x.stride(3), sz * x.stride(2),
+                            sz * x.stride(1), sz * x.stride(0));
+    p.yStride = sycl::long4(sz * y.stride(3), sz * y.stride(2),
+                            sz * y.stride(1), sz * y.stride(0));
+    p.bStride = sz * b.stride(0);
 
     // fu, fd strides are in elements.
-    p.fuStride  = make_longlong3(fu.stride(-1), fu.dim() == 2 ? fu.stride(0) : 0, 0);
-    p.fdStride  = make_longlong3(fd.stride(-1), fd.dim() == 2 ? fd.stride(0) : 0, 0);
+    p.fuStride =
+        sycl::long3(fu.stride(-1), fu.dim() == 2 ? fu.stride(0) : 0, 0);
+    p.fdStride =
+        sycl::long3(fd.stride(-1), fd.dim() == 2 ? fd.stride(0) : 0, 0);
 
     // Determine if indices don't fit in int32. Support negative strides although Torch currently never produces those.
     bool index64b = false;
     if (std::abs(p.bStride * x.size(1)) > INT_MAX) index64b = true;
-    if (std::min(x.size(0) * p.xStride.w, 0ll) + std::min(x.size(1) * p.xStride.z, 0ll) + std::min(x.size(2) * p.xStride.y, 0ll) + std::min(x.size(3) * p.xStride.x, 0ll) < -INT_MAX) index64b = true;
-    if (std::max(x.size(0) * p.xStride.w, 0ll) + std::max(x.size(1) * p.xStride.z, 0ll) + std::max(x.size(2) * p.xStride.y, 0ll) + std::max(x.size(3) * p.xStride.x, 0ll) >  INT_MAX) index64b = true;
-    if (std::min(y.size(0) * p.yStride.w, 0ll) + std::min(y.size(1) * p.yStride.z, 0ll) + std::min(y.size(2) * p.yStride.y, 0ll) + std::min(y.size(3) * p.yStride.x, 0ll) < -INT_MAX) index64b = true;
-    if (std::max(y.size(0) * p.yStride.w, 0ll) + std::max(y.size(1) * p.yStride.z, 0ll) + std::max(y.size(2) * p.yStride.y, 0ll) + std::max(y.size(3) * p.yStride.x, 0ll) >  INT_MAX) index64b = true;
+    if (std::min(x.size(0) * p.xStride.w(), 0l) +
+            std::min(x.size(1) * p.xStride.z(), 0l) +
+            std::min(x.size(2) * p.xStride.y(), 0l) +
+            std::min(x.size(3) * p.xStride.x(), 0l) <
+        -INT_MAX) index64b = true;
+    if (std::max(x.size(0) * p.xStride.w(), 0l) +
+            std::max(x.size(1) * p.xStride.z(), 0l) +
+            std::max(x.size(2) * p.xStride.y(), 0l) +
+            std::max(x.size(3) * p.xStride.x(), 0l) >
+        INT_MAX) index64b = true;
+    if (std::min(y.size(0) * p.yStride.w(), 0l) +
+            std::min(y.size(1) * p.yStride.z(), 0l) +
+            std::min(y.size(2) * p.yStride.y(), 0l) +
+            std::min(y.size(3) * p.yStride.x(), 0l) <
+        -INT_MAX) index64b = true;
+    if (std::max(y.size(0) * p.yStride.w(), 0l) +
+            std::max(y.size(1) * p.yStride.z(), 0l) +
+            std::max(y.size(2) * p.yStride.y(), 0l) +
+            std::max(y.size(3) * p.yStride.x(), 0l) >
+        INT_MAX) index64b = true;
     if (s.numel() > INT_MAX) index64b = true;
 
     // Choose CUDA kernel.
@@ -162,9 +194,9 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
     // Launch CUDA kernel.
     void* args[] = {&p};
     int bx = spec.numWarps * 32;
-    int gx = (p.yShape.x - 1) / spec.tileOut.x + 1;
-    int gy = (p.yShape.y - 1) / spec.tileOut.y + 1;
-    int gz = p.yShape.z * p.yShape.w;
+    int gx = (p.yShape.x() - 1) / spec.tileOut.x() + 1;
+    int gy = (p.yShape.y() - 1) / spec.tileOut.y() + 1;
+    int gz = p.yShape.z() * p.yShape.w();
 
     // Repeat multiple horizontal tiles in a CTA?
     if (spec.xrep)
@@ -182,18 +214,52 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
     }
 
     // Launch filter setup kernel.
-    AT_CUDA_CHECK(cudaLaunchKernel(spec.setup, 1, 1024, args, 0, at::cuda::getCurrentCUDAStream()));
+    /*
+    DPCT1049:33: The work-group size passed to the SYCL kernel may exceed the
+    limit. To get the device limit, query info::device::max_work_group_size.
+    Adjust the work-group size if needed.
+    */
+    /*
+    DPCT1123:34: The kernel function pointer cannot be used in the device code.
+    You need to call the kernel function with the correct argument(s) directly.
+    According to the kernel function definition, adjusting the dimension of the
+    sycl::nd_item may also be required.
+    */
+  AT_CUDA_CHECK([&]() {
+    auto exp_props = sycl::ext::oneapi::experimental::properties{
+        sycl::ext::oneapi::experimental::use_root_sync};
+    ((sycl::queue *)(&getCurrentXPUQueue()))  // ((sycl::queue *)(at::cuda::getCurrentCUDAStream()))
+        ->parallel_for(sycl::nd_range<3>(sycl::range<3>(1, 1, 1024),
+                                         sycl::range<3>(1, 1, 1024)),
+                       exp_props, [=](sycl::nd_item<3> item_ct1) {
+                        // (spec.setup)();
+                       });
+    return 0;
+  }());
 
     // Copy kernels to constant memory.
-    if      ( writeSigns && !readSigns) AT_CUDA_CHECK((copy_filters<true,  false>(at::cuda::getCurrentCUDAStream())));
-    else if (!writeSigns &&  readSigns) AT_CUDA_CHECK((copy_filters<false, true >(at::cuda::getCurrentCUDAStream())));
-    else if (!writeSigns && !readSigns) AT_CUDA_CHECK((copy_filters<false, false>(at::cuda::getCurrentCUDAStream())));
+    if      ( writeSigns && !readSigns) AT_CUDA_CHECK((copy_filters<true,  false>(&getCurrentXPUQueue())));
+    else if (!writeSigns &&  readSigns) AT_CUDA_CHECK((copy_filters<false, true >(&getCurrentXPUQueue())));
+    else if (!writeSigns && !readSigns) AT_CUDA_CHECK((copy_filters<false, false>(&getCurrentXPUQueue())));
 
     // Set cache and shared memory configurations for main kernel.
-    AT_CUDA_CHECK(cudaFuncSetCacheConfig(spec.exec, cudaFuncCachePreferShared));
+    /*
+    DPCT1027:56: The call to cudaFuncSetCacheConfig was replaced with 0 because
+    SYCL currently does not support configuring shared memory on devices.
+    */
+    AT_CUDA_CHECK(0);
     if (spec.dynamicSharedKB) // Need dynamically allocated shared memory?
-        AT_CUDA_CHECK(cudaFuncSetAttribute(spec.exec, cudaFuncAttributeMaxDynamicSharedMemorySize, spec.dynamicSharedKB << 10));
-    AT_CUDA_CHECK(cudaFuncSetSharedMemConfig(spec.exec, cudaSharedMemBankSizeFourByte));
+        /*
+        DPCT1027:57: The call to cudaFuncSetAttribute was replaced with 0
+        because SYCL currently does not support corresponding setting.
+        */
+        AT_CUDA_CHECK(0);
+    /*
+    DPCT1027:58: The call to cudaFuncSetSharedMemConfig was replaced with 0
+    because SYCL currently does not support configuring shared memory on
+    devices.
+    */
+    AT_CUDA_CHECK(0);
 
     // Launch main kernel.
     const int maxSubGz = 65535; // CUDA maximum for block z dimension.
@@ -201,10 +267,32 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
     {
         p.blockZofs = zofs;
         int subGz = std::min(maxSubGz, gz - zofs);
-        AT_CUDA_CHECK(cudaLaunchKernel(spec.exec, dim3(gx, gy, subGz), bx, args, spec.dynamicSharedKB << 10, at::cuda::getCurrentCUDAStream()));
-    }
+        /*
+        DPCT1049:35: The work-group size passed to the SYCL kernel may exceed
+        the limit. To get the device limit, query
+        info::device::max_work_group_size. Adjust the work-group size if needed.
+        */
+        /*
+        DPCT1123:36: The kernel function pointer cannot be used in the device
+        code. You need to call the kernel function with the correct argument(s)
+        directly. According to the kernel function definition, adjusting the
+        dimension of the sycl::nd_item may also be required.
+        */
+    AT_CUDA_CHECK([&]() {
+      auto exp_props = sycl::ext::oneapi::experimental::properties{
+          sycl::ext::oneapi::experimental::use_root_sync};
+      ((sycl::queue *)(&getCurrentXPUQueue()))  // ((sycl::queue *)(at::cuda::getCurrentCUDAStream()))
+          ->parallel_for(sycl::nd_range<3>(sycl::range<3>(subGz, gy, gx) *
+                                               sycl::range<3>(1, 1, bx),
+                                           sycl::range<3>(1, 1, bx)),
+                         exp_props, [=](sycl::nd_item<3> item_ct1) {
+                          // (spec.exec)();
+                         });
+      return 0;
+    }());
+  }
 
-    // Done.
+  // Done.
     return std::make_tuple(y, so, 0);
 }
 
@@ -213,8 +301,8 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
 static torch::Tensor filtered_lrelu_act(torch::Tensor x, torch::Tensor si, int sx, int sy, float gain, float slope, float clamp, bool writeSigns)
 {
     // Set CUDA device.
-    TORCH_CHECK(x.is_cuda(), "x must reside on CUDA device");
-    const at::cuda::OptionalCUDAGuard device_guard(device_of(x));
+    TORCH_CHECK(x.is_xpu(), "x must reside on XPU device");
+    const at::OptionalDeviceGuard device_guard(device_of(x));  // const at::cuda::OptionalCUDAGuard device_guard(device_of(x));
 
     // Validate arguments.
     TORCH_CHECK(x.dim() == 4, "x must be rank 4");
@@ -251,10 +339,13 @@ static torch::Tensor filtered_lrelu_act(torch::Tensor x, torch::Tensor si, int s
     p.gain      = gain;
     p.slope     = slope;
     p.clamp     = clamp;
-    p.xShape    = make_int4((int)x.size(3), (int)x.size(2), (int)x.size(1), (int)x.size(0));
-    p.xStride   = make_longlong4(x.stride(3), x.stride(2), x.stride(1), x.stride(0));
-    p.sShape    = (readSigns || writeSigns) ? make_int2((int)s.size(3) << 2, (int)s.size(2)) : make_int2(0, 0); // Width is in elements. Contiguous.
-    p.sOfs      = make_int2(sx, sy);
+    p.xShape = sycl::int4((int)x.size(3), (int)x.size(2), (int)x.size(1),
+                          (int)x.size(0));
+    p.xStride = sycl::long4(x.stride(3), x.stride(2), x.stride(1), x.stride(0));
+    p.sShape = (readSigns || writeSigns)
+                   ? sycl::int2((int)s.size(3) << 2, (int)s.size(2))
+                   : sycl::int2(0, 0); // Width is in elements. Contiguous.
+    p.sOfs      = sycl::int2(sx, sy);
 
     // Choose CUDA kernel.
     void* func = 0;
@@ -274,9 +365,10 @@ static torch::Tensor filtered_lrelu_act(torch::Tensor x, torch::Tensor si, int s
     int bx = 128; // 4 warps per block.
 
     // Logical size of launch = writeSigns ? p.s : p.x
-    uint32_t gx = writeSigns ? p.sShape.x : p.xShape.x;
-    uint32_t gy = writeSigns ? p.sShape.y : p.xShape.y;
-    uint32_t gz = p.xShape.z * p.xShape.w; // Same as in p.sShape if signs are in use.
+    uint32_t gx = writeSigns ? p.sShape.x() : p.xShape.x();
+    uint32_t gy = writeSigns ? p.sShape.y() : p.xShape.y();
+    uint32_t gz =
+        p.xShape.z() * p.xShape.w(); // Same as in p.sShape if signs are in use.
     gx = (gx - 1) / bx + 1;
 
     // Make sure grid y and z dimensions are within CUDA launch limits. Kernel loops internally to do the rest.
@@ -285,8 +377,30 @@ static torch::Tensor filtered_lrelu_act(torch::Tensor x, torch::Tensor si, int s
     gz = std::min(gz, gmax);
 
     // Launch.
-    AT_CUDA_CHECK(cudaLaunchKernel(func, dim3(gx, gy, gz), bx, args, 0, at::cuda::getCurrentCUDAStream()));
-    return so;
+    /*
+    DPCT1049:37: The work-group size passed to the SYCL kernel may exceed the
+    limit. To get the device limit, query info::device::max_work_group_size.
+    Adjust the work-group size if needed.
+    */
+    /*
+    DPCT1123:38: The kernel function pointer cannot be used in the device code.
+    You need to call the kernel function with the correct argument(s) directly.
+    According to the kernel function definition, adjusting the dimension of the
+    sycl::nd_item may also be required.
+    */
+  AT_CUDA_CHECK([&]() {
+    auto exp_props = sycl::ext::oneapi::experimental::properties{
+        sycl::ext::oneapi::experimental::use_root_sync};
+    ((sycl::queue *)(&getCurrentXPUQueue()))  //      ((sycl::queue *)(at::cuda::getCurrentCUDAStream()))
+        ->parallel_for(sycl::nd_range<3>(sycl::range<3>(gz, gy, gx) *
+                                             sycl::range<3>(1, 1, bx),
+                                         sycl::range<3>(1, 1, bx)),
+                       exp_props, [=](sycl::nd_item<3> item_ct1) {
+                        // func();
+                       });
+    return 0;
+  }());
+  return so;
 }
 
 //------------------------------------------------------------------------

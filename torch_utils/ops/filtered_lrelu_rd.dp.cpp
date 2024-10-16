@@ -6,7 +6,9 @@
 // distribution of this software and related documentation without an express
 // license agreement from NVIDIA CORPORATION is strictly prohibited.
 
-#include "filtered_lrelu.cu"
+#include <sycl/sycl.hpp>
+#include <dpct/dpct.hpp>
+#include "filtered_lrelu.dp.cpp"
 
 // Template/kernel specializations for sign read mode.
 
@@ -24,4 +26,4 @@ template void* choose_filtered_lrelu_act_kernel<float,     false, true>(void);
 template void* choose_filtered_lrelu_act_kernel<double,    false, true>(void);
 
 // Copy filters to constant memory.
-template cudaError_t copy_filters<false, true>(cudaStream_t stream);
+template dpct::err0 copy_filters<false, true>(dpct::queue_ptr stream);

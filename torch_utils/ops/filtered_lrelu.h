@@ -6,7 +6,8 @@
 // distribution of this software and related documentation without an express
 // license agreement from NVIDIA CORPORATION is strictly prohibited.
 
-#include <cuda_runtime.h>
+#include <sycl/sycl.hpp>
+#include <dpct/dpct.hpp>
 
 //------------------------------------------------------------------------
 // CUDA kernel parameters.
@@ -16,8 +17,8 @@ struct filtered_lrelu_kernel_params
     // These parameters decide which kernel to use.
     int             up;         // upsampling ratio (1, 2, 4)
     int             down;       // downsampling ratio (1, 2, 4)
-    int2            fuShape;    // [size, 1] | [size, size]
-    int2            fdShape;    // [size, 1] | [size, size]
+    sycl::int2 fuShape;         // [size, 1] | [size, size]
+    sycl::int2 fdShape;         // [size, 1] | [size, size]
 
     int             _dummy;     // Alignment.
 
@@ -29,7 +30,7 @@ struct filtered_lrelu_kernel_params
     const float*    fu;         // Upsampling filter.
     const float*    fd;         // Downsampling filter.
 
-    int2            pad0;       // Left/top padding.
+    sycl::int2 pad0;            // Left/top padding.
     float           gain;       // Additional gain factor.
     float           slope;      // Leaky ReLU slope on negative side.
     float           clamp;      // Clamp after nonlinearity.
@@ -39,17 +40,20 @@ struct filtered_lrelu_kernel_params
     int             tilesXrep;  // Number of horizontal tiles per CTA.
     int             blockZofs;  // Block z offset to support large minibatch, channel dimensions.
 
-    int4            xShape;     // [width, height, channel, batch]
-    int4            yShape;     // [width, height, channel, batch]
-    int2            sShape;     // [width, height] - width is in bytes. Contiguous. Zeros if unused.
-    int2            sOfs;       // [ofs_x, ofs_y] - offset between upsampled data and sign tensor.
+    sycl::int4 xShape; // [width, height, channel, batch]
+    sycl::int4 yShape; // [width, height, channel, batch]
+    sycl::int2 sShape; // [width, height] - width is in bytes. Contiguous. Zeros
+                       // if unused.
+    sycl::int2
+        sOfs; // [ofs_x, ofs_y] - offset between upsampled data and sign tensor.
     int             swLimit;    // Active width of sign tensor in bytes.
 
-    longlong4       xStride;    // Strides of all tensors except signs, same component order as shapes.
-    longlong4       yStride;    //
+    sycl::long4 xStride; // Strides of all tensors except signs, same component
+                         // order as shapes.
+    sycl::long4 yStride; //
     int64_t         bStride;    //
-    longlong3       fuStride;   //
-    longlong3       fdStride;   //
+    sycl::long3 fuStride;       //
+    sycl::long3 fdStride;       //
 };
 
 struct filtered_lrelu_act_kernel_params
@@ -61,10 +65,12 @@ struct filtered_lrelu_act_kernel_params
     float           slope;      // Leaky ReLU slope on negative side.
     float           clamp;      // Clamp after nonlinearity.
 
-    int4            xShape;     // [width, height, channel, batch]
-    longlong4       xStride;    // Input/output tensor strides, same order as in shape.
-    int2            sShape;     // [width, height] - width is in elements. Contiguous. Zeros if unused.
-    int2            sOfs;       // [ofs_x, ofs_y] - offset between upsampled data and sign tensor.
+    sycl::int4 xShape;   // [width, height, channel, batch]
+    sycl::long4 xStride; // Input/output tensor strides, same order as in shape.
+    sycl::int2 sShape;   // [width, height] - width is in elements. Contiguous.
+                         // Zeros if unused.
+    sycl::int2
+        sOfs; // [ofs_x, ofs_y] - offset between upsampled data and sign tensor.
 };
 
 //------------------------------------------------------------------------
@@ -74,7 +80,7 @@ struct filtered_lrelu_kernel_spec
 {
     void*   setup;              // Function for filter kernel setup.
     void*   exec;               // Function for main operation.
-    int2    tileOut;            // Width/height of launch tile.
+    sycl::int2 tileOut;         // Width/height of launch tile.
     int     numWarps;           // Number of warps per thread block, determines launch block size.
     int     xrep;               // For processing multiple horizontal tiles per thread block.
     int     dynamicSharedKB;    // How much dynamic shared memory the exec kernel wants.
@@ -85,6 +91,7 @@ struct filtered_lrelu_kernel_spec
 
 template <class T, class index_t, bool signWrite, bool signRead> filtered_lrelu_kernel_spec choose_filtered_lrelu_kernel(const filtered_lrelu_kernel_params& p, int sharedKB);
 template <class T, bool signWrite, bool signRead> void* choose_filtered_lrelu_act_kernel(void);
-template <bool signWrite, bool signRead> cudaError_t copy_filters(cudaStream_t stream);
+template <bool signWrite, bool signRead>
+ dpct::err0 copy_filters(dpct::queue_ptr stream); // should be removed
 
 //------------------------------------------------------------------------
