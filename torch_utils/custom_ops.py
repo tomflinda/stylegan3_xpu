@@ -17,11 +17,13 @@ import uuid
 import torch
 import torch.utils.cpp_extension
 from torch.utils.file_baton import FileBaton
+import intel_extension_for_pytorch as ipex
+from intel_extension_for_pytorch.xpu.cpp_extension import load, _get_build_directory
 
 #----------------------------------------------------------------------------
 # Global options.
 
-verbosity = 'brief' # Verbosity level: 'none', 'brief', 'full'
+verbosity = 'full' # Verbosity level: 'none', 'brief', 'full'
 
 #----------------------------------------------------------------------------
 # Internal helper funcs.
@@ -42,7 +44,8 @@ def _find_compiler_bindir():
 #----------------------------------------------------------------------------
 
 def _get_mangled_gpu_name():
-    name = torch.cuda.get_device_name().lower()
+    # name = torch.cuda.get_device_name().lower()
+    name = torch.xpu.get_device_name().lower()
     out = []
     for c in name:
         if re.match('[a-z0-9_-]+', c):
@@ -116,7 +119,8 @@ def get_plugin(module_name, sources, headers=None, source_dir=None, **build_kwar
 
             # Select cached build directory name.
             source_digest = hash_md5.hexdigest()
-            build_top_dir = torch.utils.cpp_extension._get_build_directory(module_name, verbose=verbose_build) # pylint: disable=protected-access
+            # build_top_dir = torch.utils.cpp_extension._get_build_directory(module_name, verbose=verbose_build) # pylint: disable=protected-access
+            build_top_dir = _get_build_directory(module_name, verbose=verbose_build) # pylint: disable=protected-access
             cached_build_dir = os.path.join(build_top_dir, f'{source_digest}-{_get_mangled_gpu_name()}')
 
             if not os.path.isdir(cached_build_dir):
@@ -133,10 +137,13 @@ def get_plugin(module_name, sources, headers=None, source_dir=None, **build_kwar
 
             # Compile.
             cached_sources = [os.path.join(cached_build_dir, os.path.basename(fname)) for fname in sources]
-            torch.utils.cpp_extension.load(name=module_name, build_directory=cached_build_dir,
+            print(module_name, cached_build_dir, cached_sources, build_kwargs)
+            load(name=module_name, build_directory=cached_build_dir,
                 verbose=verbose_build, sources=cached_sources, **build_kwargs)
+            # torch.utils.cpp_extension.load(name=module_name, build_directory=cached_build_dir,
+            #     verbose=verbose_build, sources=cached_sources, **build_kwargs)
         else:
-            torch.utils.cpp_extension.load(name=module_name, verbose=verbose_build, sources=sources, **build_kwargs)
+            load(name=module_name, verbose=verbose_build, sources=sources, **build_kwargs)
 
         # Load.
         module = importlib.import_module(module_name)
