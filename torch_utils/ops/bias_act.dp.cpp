@@ -6,6 +6,8 @@
 // distribution of this software and related documentation without an express
 // license agreement from NVIDIA CORPORATION is strictly prohibited.
 
+#include <sycl/sycl.hpp>
+#include <dpct/dpct.hpp>
 #include <c10/util/Half.h>
 #include "bias_act.h"
 
@@ -21,8 +23,15 @@ template <> struct InternalType<c10::Half>  { typedef float  scalar_t; };
 // CUDA kernel.
 
 template <class T, int A>
-__global__ void bias_act_kernel(bias_act_kernel_params p)
+/*
+DPCT1110:32: The total declared local variable size in device function
+bias_act_kernel exceeds 128 bytes and may cause high register pressure. Consult
+with your hardware vendor to find the total register size available and adjust
+the code, or use smaller sub-group size to avoid high register pressure.
+*/
+void bias_act_kernel(bias_act_kernel_params p)
 {
+    auto item_ct1 = sycl::ext::oneapi::experimental::this_nd_item<3>();
     typedef typename InternalType<T>::scalar_t scalar_t;
     int G                 = p.grad;
     scalar_t alpha        = (scalar_t)p.alpha;
@@ -36,8 +45,10 @@ __global__ void bias_act_kernel(bias_act_kernel_params p)
     scalar_t seluAlpha    = (scalar_t)1.6732632423543772848170429916717;
 
     // Loop over elements.
-    int xi = blockIdx.x * p.loopX * blockDim.x + threadIdx.x;
-    for (int loopIdx = 0; loopIdx < p.loopX && xi < p.sizeX; loopIdx++, xi += blockDim.x)
+    int xi = item_ct1.get_group(2) * p.loopX * item_ct1.get_local_range(2) +
+             item_ct1.get_local_id(2);
+    for (int loopIdx = 0; loopIdx < p.loopX && xi < p.sizeX;
+         loopIdx++, xi += item_ct1.get_local_range(2))
     {
         // Load.
         scalar_t x = (scalar_t)((const T*)p.x)[xi];
@@ -75,7 +86,12 @@ __global__ void bias_act_kernel(bias_act_kernel_params p)
         // tanh
         if (A == 4)
         {
-            if (G == 0) { scalar_t c = exp(x); scalar_t d = one / c; y = (x < -expRange) ? -one : (x > expRange) ? one : (c - d) / (c + d); }
+            if (G == 0) {
+                scalar_t c = sycl::exp(x); scalar_t d = one / c;
+                y = (x < -expRange)  ? -one
+                    : (x > expRange) ? one
+                                     : (c - d) / (c + d);
+            }
             if (G == 1) y = x * (one - yy * yy);
             if (G == 2) y = x * (one - yy * yy) * (-two * yy);
         }
@@ -83,7 +99,7 @@ __global__ void bias_act_kernel(bias_act_kernel_params p)
         // sigmoid
         if (A == 5)
         {
-            if (G == 0) y = (x < -expRange) ? 0 : one / (exp(-x) + one);
+            if (G == 0) y = (x < -expRange) ? 0 : one / (sycl::exp(-x) + one);
             if (G == 1) y = x * yy * (one - yy);
             if (G == 2) y = x * yy * (one - yy) * (one - two * yy);
         }
@@ -91,7 +107,7 @@ __global__ void bias_act_kernel(bias_act_kernel_params p)
         // elu
         if (A == 6)
         {
-            if (G == 0) y = (x >= 0) ? x : exp(x) - one;
+            if (G == 0) y = (x >= 0) ? x : sycl::exp(x) - one;
             if (G == 1) y = (yy >= 0) ? x : x * (yy + one);
             if (G == 2) y = (yy >= 0) ? 0 : x * (yy + one);
         }
@@ -99,7 +115,9 @@ __global__ void bias_act_kernel(bias_act_kernel_params p)
         // selu
         if (A == 7)
         {
-            if (G == 0) y = (x >= 0) ? seluScale * x : (seluScale * seluAlpha) * (exp(x) - one);
+            if (G == 0) y =
+                (x >= 0) ? seluScale * x
+                         : (seluScale * seluAlpha) * (sycl::exp(x) - one);
             if (G == 1) y = (yy >= 0) ? x * seluScale : x * (yy + seluScale * seluAlpha);
             if (G == 2) y = (yy >= 0) ? 0 : x * (yy + seluScale * seluAlpha);
         }
@@ -107,25 +125,27 @@ __global__ void bias_act_kernel(bias_act_kernel_params p)
         // softplus
         if (A == 8)
         {
-            if (G == 0) y = (x > expRange) ? x : log(exp(x) + one);
-            if (G == 1) y = x * (one - exp(-yy));
-            if (G == 2) { scalar_t c = exp(-yy); y = x * c * (one - c); }
+            if (G == 0) y = (x > expRange) ? x : sycl::log(sycl::exp(x) + one);
+            if (G == 1) y = x * (one - sycl::exp(-yy));
+            if (G == 2) { scalar_t c = sycl::exp(-yy); y = x * c * (one - c); }
         }
 
         // swish
         if (A == 9)
         {
             if (G == 0)
-                y = (x < -expRange) ? 0 : x / (exp(-x) + one);
+                y = (x < -expRange) ? 0 : x / (sycl::exp(-x) + one);
             else
             {
-                scalar_t c = exp(xref);
+                scalar_t c = sycl::exp(xref);
                 scalar_t d = c + one;
                 if (G == 1)
                     y = (xref > halfExpRange) ? x : x * c * (xref + d) / (d * d);
                 else
                     y = (xref > halfExpRange) ? 0 : x * c * (xref * (two - d) + two * d) / (d * d * d);
-                yref = (xref < -expRange) ? 0 : xref / (exp(-xref) + one) * gain;
+                yref = (xref < -expRange)
+                           ? 0
+                           : xref / (sycl::exp(-xref) + one) * gain;
             }
         }
 
