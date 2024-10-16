@@ -25,10 +25,10 @@ def _init():
     if _plugin is None:
         _plugin = custom_ops.get_plugin(
             module_name='upfirdn2d_plugin',
-            sources=['upfirdn2d.cpp', 'upfirdn2d.cu'],
+            sources=['upfirdn2d.cpp.dp.cpp', 'upfirdn2d.dp.cpp'],
             headers=['upfirdn2d.h'],
             source_dir=os.path.dirname(__file__),
-            extra_cuda_cflags=['--use_fast_math', '--allow-unsupported-compiler'],
+            # extra_cuda_cflags=['--use_fast_math', '--allow-unsupported-compiler'],
         )
     return True
 
@@ -115,7 +115,8 @@ def setup_filter(f, device=torch.device('cpu'), normalize=True, flip_filter=Fals
 
 #----------------------------------------------------------------------------
 
-def upfirdn2d(x, f, up=1, down=1, padding=0, flip_filter=False, gain=1, impl='cuda'):
+# def upfirdn2d(x, f, up=1, down=1, padding=0, flip_filter=False, gain=1, impl='cuda'):
+def upfirdn2d(x, f, up=1, down=1, padding=0, flip_filter=False, gain=1, impl='xpu'):
     r"""Pad, upsample, filter, and downsample a batch of 2D images.
 
     Performs the following sequence of operations for each channel:
@@ -156,8 +157,10 @@ def upfirdn2d(x, f, up=1, down=1, padding=0, flip_filter=False, gain=1, impl='cu
         Tensor of the shape `[batch_size, num_channels, out_height, out_width]`.
     """
     assert isinstance(x, torch.Tensor)
-    assert impl in ['ref', 'cuda']
-    if impl == 'cuda' and x.device.type == 'cuda' and _init():
+    # assert impl in ['ref', 'cuda']
+    assert impl in ['ref', 'xpu']
+    # if impl == 'cuda' and x.device.type == 'cuda' and _init():
+    if impl == 'xpu' and x.device.type == 'xpu' and _init():
         return _upfirdn2d_cuda(up=up, down=down, padding=padding, flip_filter=flip_filter, gain=gain).apply(x, f)
     return _upfirdn2d_ref(x, f, up=up, down=down, padding=padding, flip_filter=flip_filter, gain=gain)
 
