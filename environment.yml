@@ -1,4 +1,4 @@
-name: stylegan3
+name: stylegan3_xpu
 channels:
   - pytorch
   - nvidia

@@ -9,11 +9,9 @@
 #include <sycl/sycl.hpp>
 #include <dpct/dpct.hpp>
 #include <torch/extension.h>
-// #include <ATen/cuda/CUDAContext.h>
-//#include <c10/cuda/CUDAGuard.h>
-#include <c10/core/DeviceGuard.h>
-#include <xpu/Stream.h>
+#include "c10/xpu/XPUStream.h"
 
+#include "c10/core/DeviceGuard.h"
 
 #include "upfirdn2d.h"
 
@@ -37,7 +35,7 @@ static torch::Tensor upfirdn2d(torch::Tensor x, torch::Tensor f, int upx, int up
     TORCH_CHECK(downx >= 1 && downy >= 1, "downsampling factor must be at least 1");
 
     // Create output tensor.
-    const at::OptionalDeviceGuard device_guard(device_of(x));
+    const c10::OptionalDeviceGuard device_guard(device_of(x));
     int outW = ((int)x.size(3) * upx + padx0 + padx1 - (int)f.size(1) + downx) / downx;
     int outH = ((int)x.size(2) * upy + pady0 + pady1 - (int)f.size(0) + downy) / downy;
     TORCH_CHECK(outW >= 1 && outH >= 1, "output must be at least 1x1");
@@ -53,7 +51,7 @@ static torch::Tensor upfirdn2d(torch::Tensor x, torch::Tensor f, int upx, int up
     p.up = sycl::int2(upx, upy);
     p.down = sycl::int2(downx, downy);
     p.pad0 = sycl::int2(padx0, pady0);
-    p.flip          = (flip) ? 1 : 0;
+    p.flip = (flip) ? 1 : 0;
     p.gain          = gain;
     p.inSize = sycl::int4((int)x.size(3), (int)x.size(2), (int)x.size(1),
                           (int)x.size(0));
@@ -84,20 +82,20 @@ static torch::Tensor upfirdn2d(torch::Tensor x, torch::Tensor f, int upx, int up
     p.launchMajor   = (p.sizeMajor - 1) / p.loopMajor + 1;
 
     // Compute grid size.
-    sycl::range<3> blockSize(1, 1, 1), gridSize(1, 1, 1);
+    dpct::dim3 blockSize, gridSize;
     if (spec.tileOutW < 0) // large
     {
-        blockSize = sycl::range<3>(1, 32, 4);
-        gridSize = sycl::range<3>(
-            p.launchMajor, (p.outSize.x() - 1) / (blockSize[1] * p.loopX) + 1,
-            ((p.outSize.y() - 1) / blockSize[2] + 1) * p.launchMinor);
+        blockSize = dpct::dim3(4, 32, 1);
+        gridSize = dpct::dim3(
+            ((p.outSize.y() - 1) / blockSize.x + 1) * p.launchMinor,
+            (p.outSize.x() - 1) / (blockSize.y * p.loopX) + 1, p.launchMajor);
     }
     else // small
     {
-        blockSize = sycl::range<3>(1, 1, 256);
-        gridSize = sycl::range<3>(
-            p.launchMajor, (p.outSize.x() - 1) / (spec.tileOutW * p.loopX) + 1,
-            ((p.outSize.y() - 1) / spec.tileOutH + 1) * p.launchMinor);
+        blockSize = dpct::dim3(256, 1, 1);
+        gridSize = dpct::dim3(
+            ((p.outSize.y() - 1) / spec.tileOutH + 1) * p.launchMinor,
+            (p.outSize.x() - 1) / (spec.tileOutW * p.loopX) + 1, p.launchMajor);
     }
 
     // Launch CUDA kernel.
@@ -113,12 +111,17 @@ static torch::Tensor upfirdn2d(torch::Tensor x, torch::Tensor f, int upx, int up
     According to the kernel function definition, adjusting the dimension of the
     sycl::nd_item may also be required.
     */
-//   ((sycl::queue *)(at::cuda::getCurrentCUDAStream()))
-//       ->parallel_for(sycl::nd_range<3>(gridSize * blockSize, blockSize),
-//                      [=](sycl::nd_item<3> item_ct1) {
-//                        (spec.kernel)();
-//                      });
-//   AT_CUDA_CHECK(0);
+    [&]() {
+    auto exp_props = sycl::ext::oneapi::experimental::properties{
+        sycl::ext::oneapi::experimental::use_root_sync};
+    ((sycl::queue *)(&static_cast<sycl::queue &>(
+         c10::xpu::getCurrentXPUStream())))
+        ->parallel_for(sycl::nd_range<3>(gridSize * blockSize, blockSize),
+                       exp_props, [=](sycl::nd_item<3> item_ct1) {
+                        // (spec.kernel)();
+                       });
+    return 0;
+    }();
     return y;
 }
 

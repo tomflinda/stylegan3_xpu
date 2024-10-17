@@ -42,7 +42,7 @@ def _init():
         _plugin = custom_ops.get_plugin(
             module_name='bias_act_plugin',
             sources=['bias_act.cpp.dp.cpp', 'bias_act.dp.cpp'],
-            headers=['bias_act.h', 'utils.h'],
+            headers=['bias_act.h'],
             source_dir=os.path.dirname(__file__),
             # extra_cuda_cflags=['--use_fast_math', '--allow-unsupported-compiler'],
         )
