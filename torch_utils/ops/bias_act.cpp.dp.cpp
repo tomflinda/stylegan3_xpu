@@ -9,12 +9,9 @@
 #include <sycl/sycl.hpp>
 #include <dpct/dpct.hpp>
 #include <torch/extension.h>
+#include "c10/xpu/XPUStream.h"
 
-//#include <ATen/cuda/CUDAContext.h>
-//#include <c10/cuda/CUDAGuard.h>
-
-#include "utils.h"
-
+#include "c10/core/DeviceGuard.h"
 
 #include "bias_act.h"
 
@@ -58,7 +55,7 @@ static torch::Tensor bias_act(torch::Tensor x, torch::Tensor b, torch::Tensor xr
     TORCH_CHECK(dy.numel() == 0 || has_same_layout(dy, x), "dy must have the same layout as x");
 
     // Create output tensor.
-    const at::OptionalDeviceGuard device_guard(device_of(x));  //const at::cuda::OptionalCUDAGuard device_guard(device_of(x));
+    const c10::OptionalDeviceGuard device_guard(device_of(x));
     torch::Tensor y = torch::empty_like(x);
     TORCH_CHECK(has_same_layout(y, x), "y must have the same layout as x");
 
@@ -93,20 +90,21 @@ static torch::Tensor bias_act(torch::Tensor x, torch::Tensor b, torch::Tensor xr
     int gridSize = (p.sizeX - 1) / (p.loopX * blockSize) + 1;
     void* args[] = {&p};
     /*
-    DPCT1049:39: The work-group size passed to the SYCL kernel may exceed the
+    DPCT1049:0: The work-group size passed to the SYCL kernel may exceed the
     limit. To get the device limit, query info::device::max_work_group_size.
     Adjust the work-group size if needed.
     */
     /*
-    DPCT1123:40: The kernel function pointer cannot be used in the device code.
+    DPCT1123:1: The kernel function pointer cannot be used in the device code.
     You need to call the kernel function with the correct argument(s) directly.
     According to the kernel function definition, adjusting the dimension of the
     sycl::nd_item may also be required.
     */
-  AT_CUDA_CHECK([&]() {
+    [&]() {
     auto exp_props = sycl::ext::oneapi::experimental::properties{
         sycl::ext::oneapi::experimental::use_root_sync};
-    ((sycl::queue *)(&getCurrentXPUQueue())) // at::cuda::getCurrentCUDAStream()) --> &getCurrentXPUQueue()
+    ((sycl::queue *)(&static_cast<sycl::queue &>(
+         c10::xpu::getCurrentXPUStream())))
         ->parallel_for(sycl::nd_range<3>(sycl::range<3>(1, 1, gridSize) *
                                              sycl::range<3>(1, 1, blockSize),
                                          sycl::range<3>(1, 1, blockSize)),
@@ -114,7 +112,7 @@ static torch::Tensor bias_act(torch::Tensor x, torch::Tensor b, torch::Tensor xr
                          //kernel();
                        });
     return 0;
-  }());
+    }();
     return y;
 }
 

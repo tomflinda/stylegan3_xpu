@@ -9,9 +9,10 @@
 #include <sycl/sycl.hpp>
 #include <dpct/dpct.hpp>
 #include <torch/extension.h>
-//#include <ATen/cuda/CUDAContext.h>
-//#include <c10/cuda/CUDAGuard.h>
-#include "utils.h"
+#include "c10/xpu/XPUStream.h"
+
+#include "c10/core/DeviceGuard.h"
+
 #include "filtered_lrelu.h"
 
 //------------------------------------------------------------------------
@@ -22,7 +23,7 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
 {
     // Set CUDA device.
     TORCH_CHECK(x.is_xpu(), "x must reside on XPU device");
-    const at::OptionalDeviceGuard device_guard(device_of(x)); // const at::cuda::OptionalCUDAGuard device_guard(device_of(x));
+    const c10::OptionalDeviceGuard device_guard(device_of(x));
 
     // Validate arguments.
     TORCH_CHECK(fu.device() == x.device() && fd.device() == x.device() && b.device() == x.device(), "all input tensors must reside on the same device");
@@ -42,7 +43,7 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
 
     // Figure out how much shared memory is available on the device.
     int maxSharedBytes = 0;
-    // AT_CUDA_CHECK(cudaDeviceGetAttribute(&maxSharedBytes, cudaDevAttrMaxSharedMemoryPerBlockOptin, x.device().index()));
+    // cudaDeviceGetAttribute(&maxSharedBytes, cudaDevAttrMaxSharedMemoryPerBlockOptin, x.device().index()); 
     int sharedKB = maxSharedBytes >> 10;
 
     // Populate enough launch parameters to check if a CUDA kernel exists.
@@ -149,7 +150,8 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
     p.fdStride =
         sycl::long3(fd.stride(-1), fd.dim() == 2 ? fd.stride(0) : 0, 0);
 
-    // Determine if indices don't fit in int32. Support negative strides although Torch currently never produces those.
+    // Determine if indices don't fit in int32. Support negative strides
+    // although Torch currently never produces those.
     bool index64b = false;
     if (std::abs(p.bStride * x.size(1)) > INT_MAX) index64b = true;
     if (std::min(x.size(0) * p.xStride.w(), 0l) +
@@ -225,41 +227,42 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
     According to the kernel function definition, adjusting the dimension of the
     sycl::nd_item may also be required.
     */
-  AT_CUDA_CHECK([&]() {
+  [&]() {
     auto exp_props = sycl::ext::oneapi::experimental::properties{
         sycl::ext::oneapi::experimental::use_root_sync};
-    ((sycl::queue *)(&getCurrentXPUQueue()))  // ((sycl::queue *)(at::cuda::getCurrentCUDAStream()))
+    ((sycl::queue *)(&static_cast<sycl::queue &>(
+         c10::xpu::getCurrentXPUStream())))
         ->parallel_for(sycl::nd_range<3>(sycl::range<3>(1, 1, 1024),
                                          sycl::range<3>(1, 1, 1024)),
                        exp_props, [=](sycl::nd_item<3> item_ct1) {
-                        // (spec.setup)();
+                         //(spec.setup)();
                        });
     return 0;
-  }());
+  }();
 
     // Copy kernels to constant memory.
-    if      ( writeSigns && !readSigns) AT_CUDA_CHECK((copy_filters<true,  false>(&getCurrentXPUQueue())));
-    else if (!writeSigns &&  readSigns) AT_CUDA_CHECK((copy_filters<false, true >(&getCurrentXPUQueue())));
-    else if (!writeSigns && !readSigns) AT_CUDA_CHECK((copy_filters<false, false>(&getCurrentXPUQueue())));
+    if      ( writeSigns && !readSigns) (copy_filters<true,  false>(&static_cast<sycl::queue &>(c10::xpu::getCurrentXPUStream())));
+    else if (!writeSigns &&  readSigns) (copy_filters<false, true >(&static_cast<sycl::queue &>(c10::xpu::getCurrentXPUStream())));
+    else if (!writeSigns && !readSigns) (copy_filters<false, false>(&static_cast<sycl::queue &>(c10::xpu::getCurrentXPUStream())));
 
     // Set cache and shared memory configurations for main kernel.
     /*
     DPCT1027:56: The call to cudaFuncSetCacheConfig was replaced with 0 because
     SYCL currently does not support configuring shared memory on devices.
     */
-    AT_CUDA_CHECK(0);
+    0;
     if (spec.dynamicSharedKB) // Need dynamically allocated shared memory?
         /*
         DPCT1027:57: The call to cudaFuncSetAttribute was replaced with 0
         because SYCL currently does not support corresponding setting.
         */
-        AT_CUDA_CHECK(0);
+        0;
     /*
     DPCT1027:58: The call to cudaFuncSetSharedMemConfig was replaced with 0
     because SYCL currently does not support configuring shared memory on
     devices.
     */
-    AT_CUDA_CHECK(0);
+    0;
 
     // Launch main kernel.
     const int maxSubGz = 65535; // CUDA maximum for block z dimension.
@@ -278,10 +281,11 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
         directly. According to the kernel function definition, adjusting the
         dimension of the sycl::nd_item may also be required.
         */
-    AT_CUDA_CHECK([&]() {
+    [&]() {
       auto exp_props = sycl::ext::oneapi::experimental::properties{
           sycl::ext::oneapi::experimental::use_root_sync};
-      ((sycl::queue *)(&getCurrentXPUQueue()))  // ((sycl::queue *)(at::cuda::getCurrentCUDAStream()))
+      ((sycl::queue *)(&static_cast<sycl::queue &>(
+           c10::xpu::getCurrentXPUStream())))
           ->parallel_for(sycl::nd_range<3>(sycl::range<3>(subGz, gy, gx) *
                                                sycl::range<3>(1, 1, bx),
                                            sycl::range<3>(1, 1, bx)),
@@ -289,7 +293,7 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
                           // (spec.exec)();
                          });
       return 0;
-    }());
+    }();
   }
 
   // Done.
@@ -302,7 +306,7 @@ static torch::Tensor filtered_lrelu_act(torch::Tensor x, torch::Tensor si, int s
 {
     // Set CUDA device.
     TORCH_CHECK(x.is_xpu(), "x must reside on XPU device");
-    const at::OptionalDeviceGuard device_guard(device_of(x));  // const at::cuda::OptionalCUDAGuard device_guard(device_of(x));
+    const c10::OptionalDeviceGuard device_guard(device_of(x));
 
     // Validate arguments.
     TORCH_CHECK(x.dim() == 4, "x must be rank 4");
@@ -345,7 +349,7 @@ static torch::Tensor filtered_lrelu_act(torch::Tensor x, torch::Tensor si, int s
     p.sShape = (readSigns || writeSigns)
                    ? sycl::int2((int)s.size(3) << 2, (int)s.size(2))
                    : sycl::int2(0, 0); // Width is in elements. Contiguous.
-    p.sOfs      = sycl::int2(sx, sy);
+    p.sOfs = sycl::int2(sx, sy);
 
     // Choose CUDA kernel.
     void* func = 0;
@@ -388,10 +392,11 @@ static torch::Tensor filtered_lrelu_act(torch::Tensor x, torch::Tensor si, int s
     According to the kernel function definition, adjusting the dimension of the
     sycl::nd_item may also be required.
     */
-  AT_CUDA_CHECK([&]() {
+  [&]() {
     auto exp_props = sycl::ext::oneapi::experimental::properties{
         sycl::ext::oneapi::experimental::use_root_sync};
-    ((sycl::queue *)(&getCurrentXPUQueue()))  //      ((sycl::queue *)(at::cuda::getCurrentCUDAStream()))
+    ((sycl::queue *)(&static_cast<sycl::queue &>(
+         c10::xpu::getCurrentXPUStream())))
         ->parallel_for(sycl::nd_range<3>(sycl::range<3>(gz, gy, gx) *
                                              sycl::range<3>(1, 1, bx),
                                          sycl::range<3>(1, 1, bx)),
@@ -399,8 +404,8 @@ static torch::Tensor filtered_lrelu_act(torch::Tensor x, torch::Tensor si, int s
                         // func();
                        });
     return 0;
-  }());
-  return so;
+  }();
+    return so;
 }
 
 //------------------------------------------------------------------------

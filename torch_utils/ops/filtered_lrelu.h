@@ -92,6 +92,6 @@ struct filtered_lrelu_kernel_spec
 template <class T, class index_t, bool signWrite, bool signRead> filtered_lrelu_kernel_spec choose_filtered_lrelu_kernel(const filtered_lrelu_kernel_params& p, int sharedKB);
 template <class T, bool signWrite, bool signRead> void* choose_filtered_lrelu_act_kernel(void);
 template <bool signWrite, bool signRead>
- dpct::err0 copy_filters(dpct::queue_ptr stream); // should be removed
+dpct::err0 copy_filters(dpct::queue_ptr stream);
 
 //------------------------------------------------------------------------
