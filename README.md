@@ -1,8 +1,8 @@
 ## StyleGAN3 on SYCL xpu device
 
 - StyleGAN3 codebase running on SYCL instead of CUDA
-- ported the kernels `bias_act`, `upfirdn2d` and `filtered_lrelu` from CUDA to SYCL
-- Woring code repo commit id(c233a919a6faee6e36a316ddd4eddababad1adf9), and compilation database, stylegan3 specific user-defined migration rules are in the folder "migration_assist_folder".
+- Ported the kernels `bias_act`, `upfirdn2d` and `filtered_lrelu` from CUDA to SYCL
+- Working code repo commit id(c233a919a6faee6e36a316ddd4eddababad1adf9), and compilation database, stylegan3 specific user-defined migration rules are in the folder "migration_assist_folder".
 
 ### Steps to setup build & run environment
 
