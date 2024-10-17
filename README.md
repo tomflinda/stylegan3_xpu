@@ -1,3 +1,20 @@
+## StyleGAN3 on SYCL xpu device
+
+- StyleGAN3 codebase running on SYCL instead of CUDA
+- ported the kernels `bias_act`, `upfirdn2d` and `filtered_lrelu` from CUDA to SYCL
+- Woring code repo commit id(c233a919a6faee6e36a316ddd4eddababad1adf9), and compilation database, stylegan3 specific user-defined migration rules are in the folder "migration_assist_folder".
+
+### Steps to setup build & run environment
+
+```
+conda env remove --name stylegan3_xpu
+conda env create -f environment.yml
+conda activate stylegan3_xpu
+pip install torch==2.3.1+cxx11.abi torchvision==0.18.1+cxx11.abi torchaudio==2.3.1+cxx11.abi intel-extension-for-pytorch==2.3.110+xpu oneccl_bind_pt==2.3.100+xpu --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/xpu/us/ ### specify --proxy "URL:PORT/" if needed
+rm /home/chenweis/.cache/torch_extensions/py39_xpu/  -rf ## to triger SYCL operation compilation process
+python load_test.py
+```
+
 ## Alias-Free Generative Adversarial Networks (StyleGAN3)<br><sub>Official PyTorch implementation of the NeurIPS 2021 paper</sub>
 
 ![Teaser image](./docs/stylegan3-teaser-1920x1006.png)

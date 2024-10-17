@@ -1,0 +1,57 @@
+- Rule: rule_process_is_cuda
+  Kind: PatternRewriter
+  Priority: Takeover
+  In: is_cuda
+  Out: is_xpu
+
+- Rule: rule_process_CUDA_sentence
+  Kind: PatternRewriter
+  Priority: Takeover
+  In: x must reside on CUDA device
+  Out: x must reside on XPU device
+
+- Rule: rule_remove_static_attr_from_copy_filters_function
+  Kind: PatternRewriter
+  Priority: Takeover
+  In: static dpct::err0 copy_filters(dpct::queue_ptr stream)
+  Out: dpct::err0 copy_filters(dpct::queue_ptr stream)
+
+- Rule: rule_change_longlong_to_long_for_zero_value
+  Kind: PatternRewriter
+  Priority: Takeover
+  In: 0ll
+  Out: 0l
+
+- Rule: rule_process_get_current_cuda_stream
+  Kind: PatternRewriter
+  Priority: Takeover
+  In: at::cuda::getCurrentCUDAStream()
+  Out: | 
+       &static_cast<sycl::queue &>(c10::xpu::getCurrentXPUStream())
+
+- Rule: rule_remove_at_cuda_check_macro
+  Kind: PatternRewriter
+  Priority: Takeover
+  In: AT_CUDA_CHECK(${args});
+  Out: ${args};
+
+- Rule: rule_process_cuda_guard_header_file
+  Kind: Header
+  Priority: Takeover
+  In: c10/cuda/CUDAGuard.h
+  Out: c10/core/DeviceGuard.h
+  Includes: []
+
+- Rule: rule_process_optional_cuda_guard_function
+  Kind: Type
+  Priority: Takeover
+  In: c10::cuda::OptionalCUDAGuard
+  Out: c10::OptionalDeviceGuard
+  Includes: []
+
+- Rule: rule_process_cuda_context_header_file
+  Kind: Header
+  Priority: Takeover
+  In: ATen/cuda/CUDAContext.h
+  Out: c10/xpu/XPUStream.h
+  Includes: []
