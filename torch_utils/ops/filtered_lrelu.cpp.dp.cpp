@@ -43,7 +43,14 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
 
     // Figure out how much shared memory is available on the device.
     int maxSharedBytes = 0;
-    // cudaDeviceGetAttribute(&maxSharedBytes, cudaDevAttrMaxSharedMemoryPerBlockOptin, x.device().index()); 
+    /*
+    DPCT1019:56: local_mem_size in SYCL is not a complete equivalent of
+    cudaDevAttrMaxSharedMemoryPerBlockOptin in CUDA. You may need to adjust the
+    code.
+    */
+    DPCT_CHECK_ERROR(
+        maxSharedBytes =
+            dpct::get_device(x.device().index()).get_local_mem_size());
     int sharedKB = maxSharedBytes >> 10;
 
     // Populate enough launch parameters to check if a CUDA kernel exists.
@@ -230,6 +237,7 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
   [&]() {
     auto exp_props = sycl::ext::oneapi::experimental::properties{
         sycl::ext::oneapi::experimental::use_root_sync};
+
     ((sycl::queue *)(&static_cast<sycl::queue &>(
          c10::xpu::getCurrentXPUStream())))
         ->parallel_for(sycl::nd_range<3>(sycl::range<3>(1, 1, 1024),
@@ -247,18 +255,18 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
 
     // Set cache and shared memory configurations for main kernel.
     /*
-    DPCT1027:56: The call to cudaFuncSetCacheConfig was replaced with 0 because
+    DPCT1027:57: The call to cudaFuncSetCacheConfig was replaced with 0 because
     SYCL currently does not support configuring shared memory on devices.
     */
     0;
     if (spec.dynamicSharedKB) // Need dynamically allocated shared memory?
         /*
-        DPCT1027:57: The call to cudaFuncSetAttribute was replaced with 0
+        DPCT1027:58: The call to cudaFuncSetAttribute was replaced with 0
         because SYCL currently does not support corresponding setting.
         */
         0;
     /*
-    DPCT1027:58: The call to cudaFuncSetSharedMemConfig was replaced with 0
+    DPCT1027:59: The call to cudaFuncSetSharedMemConfig was replaced with 0
     because SYCL currently does not support configuring shared memory on
     devices.
     */
@@ -284,13 +292,14 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
     [&]() {
       auto exp_props = sycl::ext::oneapi::experimental::properties{
           sycl::ext::oneapi::experimental::use_root_sync};
+
       ((sycl::queue *)(&static_cast<sycl::queue &>(
            c10::xpu::getCurrentXPUStream())))
           ->parallel_for(sycl::nd_range<3>(sycl::range<3>(subGz, gy, gx) *
                                                sycl::range<3>(1, 1, bx),
                                            sycl::range<3>(1, 1, bx)),
                          exp_props, [=](sycl::nd_item<3> item_ct1) {
-                          // (spec.exec)();
+                           //(spec.exec)();
                          });
       return 0;
     }();
@@ -395,13 +404,14 @@ static torch::Tensor filtered_lrelu_act(torch::Tensor x, torch::Tensor si, int s
   [&]() {
     auto exp_props = sycl::ext::oneapi::experimental::properties{
         sycl::ext::oneapi::experimental::use_root_sync};
+
     ((sycl::queue *)(&static_cast<sycl::queue &>(
          c10::xpu::getCurrentXPUStream())))
         ->parallel_for(sycl::nd_range<3>(sycl::range<3>(gz, gy, gx) *
                                              sycl::range<3>(1, 1, bx),
                                          sycl::range<3>(1, 1, bx)),
                        exp_props, [=](sycl::nd_item<3> item_ct1) {
-                        // func();
+                         // func();
                        });
     return 0;
   }();

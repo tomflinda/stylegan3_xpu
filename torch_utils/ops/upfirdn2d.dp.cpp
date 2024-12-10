@@ -30,7 +30,7 @@ static __dpct_inline__ int floor_div(int a, int b)
 
 template <class T> static void upfirdn2d_kernel_large(upfirdn2d_kernel_params p)
 {
-    auto item_ct1 = sycl::ext::oneapi::experimental::this_nd_item<3>();
+    auto item_ct1 = sycl::ext::oneapi::this_work_item::get_nd_item<3>();
     typedef typename InternalType<T>::scalar_t scalar_t;
 
     // Calculate thread index.
@@ -127,16 +127,16 @@ adjust the code, or use smaller sub-group size to avoid high register pressure.
 */
 static void upfirdn2d_kernel_small(upfirdn2d_kernel_params p)
 {
-    auto item_ct1 = sycl::ext::oneapi::experimental::this_nd_item<3>();
+    auto item_ct1 = sycl::ext::oneapi::this_work_item::get_nd_item<3>();
     typedef typename InternalType<T>::scalar_t scalar_t;
     const int tileInW = ((tileOutW - 1) * downx + filterW - 1) / upx + 1;
     const int tileInH = ((tileOutH - 1) * downy + filterH - 1) / upy + 1;
     auto &sf = *sycl::ext::oneapi::group_local_memory_for_overwrite<
         volatile scalar_t[filterH][filterW]>(
-        sycl::ext::oneapi::experimental::this_group<3>());
+        sycl::ext::oneapi::this_work_item::get_work_group<3>());
     auto &sx = *sycl::ext::oneapi::group_local_memory_for_overwrite<
         volatile scalar_t[tileInH][tileInW][loopMinor]>(
-        sycl::ext::oneapi::experimental::this_group<3>());
+        sycl::ext::oneapi::this_work_item::get_work_group<3>());
 
     // Calculate tile index.
     int minorBase = item_ct1.get_group(2);
