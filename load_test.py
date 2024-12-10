@@ -1,5 +1,5 @@
 import torch
-import intel_extension_for_pytorch as ipex
+#import intel_extension_for_pytorch as ipex
 import numpy as np
 
 from torch_utils.ops import bias_act
@@ -35,5 +35,5 @@ def load_upfirdn2d():
 
 if __name__ == '__main__':
     load_bias()
-    load_filtered_lrelu()
-    load_upfirdn2d()
+    #load_filtered_lrelu()
+    #load_upfirdn2d()

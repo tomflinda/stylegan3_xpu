@@ -90,12 +90,12 @@ static torch::Tensor bias_act(torch::Tensor x, torch::Tensor b, torch::Tensor xr
     int gridSize = (p.sizeX - 1) / (p.loopX * blockSize) + 1;
     void* args[] = {&p};
     /*
-    DPCT1049:0: The work-group size passed to the SYCL kernel may exceed the
+    DPCT1049:39: The work-group size passed to the SYCL kernel may exceed the
     limit. To get the device limit, query info::device::max_work_group_size.
     Adjust the work-group size if needed.
     */
     /*
-    DPCT1123:1: The kernel function pointer cannot be used in the device code.
+    DPCT1123:40: The kernel function pointer cannot be used in the device code.
     You need to call the kernel function with the correct argument(s) directly.
     According to the kernel function definition, adjusting the dimension of the
     sycl::nd_item may also be required.
@@ -103,6 +103,7 @@ static torch::Tensor bias_act(torch::Tensor x, torch::Tensor b, torch::Tensor xr
     [&]() {
     auto exp_props = sycl::ext::oneapi::experimental::properties{
         sycl::ext::oneapi::experimental::use_root_sync};
+
     ((sycl::queue *)(&static_cast<sycl::queue &>(
          c10::xpu::getCurrentXPUStream())))
         ->parallel_for(sycl::nd_range<3>(sycl::range<3>(1, 1, gridSize) *

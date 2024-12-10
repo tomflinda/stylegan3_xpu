@@ -11,7 +11,6 @@
 import os
 import numpy as np
 import torch
-import intel_extension_for_pytorch as ipex
 import dnnlib
 
 from .. import custom_ops
@@ -50,7 +49,6 @@ def _init():
 
 #----------------------------------------------------------------------------
 
-# def bias_act(x, b=None, dim=1, act='linear', alpha=None, gain=None, clamp=None, impl='cuda'):
 def bias_act(x, b=None, dim=1, act='linear', alpha=None, gain=None, clamp=None, impl='xpu'):
     r"""Fused bias and activation function.
 
@@ -82,9 +80,7 @@ def bias_act(x, b=None, dim=1, act='linear', alpha=None, gain=None, clamp=None, 
         Tensor of the same shape and datatype as `x`.
     """
     assert isinstance(x, torch.Tensor)
-    # assert impl in ['ref', 'cuda']
     assert impl in ['ref', 'xpu']
-    # if impl == 'cuda' and x.device.type == 'cuda' and _init():
     if impl == 'xpu' and x.device.type == 'xpu' and _init():
         return _bias_act_cuda(dim=dim, act=act, alpha=alpha, gain=gain, clamp=clamp).apply(x, b)
     return _bias_act_ref(x=x, b=b, dim=dim, act=act, alpha=alpha, gain=gain, clamp=clamp)
