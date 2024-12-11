@@ -31,7 +31,7 @@ the code, or use smaller sub-group size to avoid high register pressure.
 */
 void bias_act_kernel(bias_act_kernel_params p)
 {
-    auto item_ct1 = sycl::ext::oneapi::experimental::this_nd_item<3>();
+    auto item_ct1 = sycl::ext::oneapi::this_work_item::get_nd_item<3>();
     typedef typename InternalType<T>::scalar_t scalar_t;
     int G                 = p.grad;
     scalar_t alpha        = (scalar_t)p.alpha;

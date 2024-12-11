@@ -15,7 +15,7 @@
 //------------------------------------------------------------------------
 // Helpers.
 
-enum dfaffdaf// Filter modes.
+enum // Filter modes.
 {
     MODE_SUSD = 0,  // Separable upsampling, separable downsampling.
     MODE_FUSD = 1,  // Full upsampling, separable downsampling.
@@ -92,23 +92,23 @@ template <class T> __dpct_inline__ T get_stride(const int64_t &x)
 #define MAX_FILTER_SIZE 32
 
 // Combined up/down filter buffers so that transfer can be done with one copy.
-static dpct::global_memory<float, 1> g_fbuf(   // Add static manually to fix multiable definition, from chenwei.
+static dpct::global_memory<float, 1> g_fbuf(
     2 * MAX_FILTER_SIZE *
     MAX_FILTER_SIZE); // Filters in global memory, written by setup kernel.
-static sycl::ext::oneapi::experimental::device_global<
-    const float[2 * MAX_FILTER_SIZE * MAX_FILTER_SIZE]>
+static __constant__ sycl::ext::oneapi::experimental::device_global<
+    float[2 * MAX_FILTER_SIZE * MAX_FILTER_SIZE]>
     c_fbuf; // Filters in constant memory, read by main kernel.
 
 // Accessors to combined buffers to index up/down filters individually.
 #define c_fu (c_fbuf)
-#define c_fd (c_fbuf + MAX_FILTER_SIZE * MAX_FILTER_SIZE)
+#define c_fd (c_fbuf.get() + MAX_FILTER_SIZE * MAX_FILTER_SIZE)
 #define g_fu (g_fbuf)
 #define g_fd (g_fbuf + MAX_FILTER_SIZE * MAX_FILTER_SIZE)
 
 // Set up filters into global memory buffer.
 static void setup_filters_kernel(filtered_lrelu_kernel_params p, float *g_fbuf)
 {
-    auto item_ct1 = sycl::ext::oneapi::experimental::this_nd_item<3>();
+    auto item_ct1 = sycl::ext::oneapi::this_work_item::get_nd_item<3>();
     for (int idx = item_ct1.get_local_id(2);
          idx < MAX_FILTER_SIZE * MAX_FILTER_SIZE;
          idx += item_ct1.get_local_range(2))
@@ -143,9 +143,8 @@ static void setup_filters_kernel(filtered_lrelu_kernel_params p, float *g_fbuf)
 }
 
 // Host function to copy filters written by setup kernel into constant buffer for main kernel.
-template <bool, bool>
-dpct::err0 copy_filters(dpct::queue_ptr stream) try { // removed static attribute from chenwei
-    void* src = 0;
+template <bool, bool> dpct::err0 copy_filters(dpct::queue_ptr stream) try {
+    void *src = 0;
     dpct::err0 err = DPCT_CHECK_ERROR(*(&src) = g_fbuf.get_ptr());
     /*
     DPCT1001:41: The statement could not be removed.
@@ -155,8 +154,8 @@ dpct::err0 copy_filters(dpct::queue_ptr stream) try { // removed static attribut
     */
     if (err) return err;
     return DPCT_CHECK_ERROR(
-        stream->memcpy((void*)&(c_fbuf.get(/* *stream */)), src,
-                       2 * MAX_FILTER_SIZE * MAX_FILTER_SIZE * sizeof(float)));  // Here is a bug found from chenwei
+        stream->memcpy(c_fbuf.get_ptr(*stream), src,
+                       2 * MAX_FILTER_SIZE * MAX_FILTER_SIZE * sizeof(float)));
 }
 catch (sycl::exception const &exc) {
   std::cerr << exc.what() << "Exception caught at file:" << __FILE__
@@ -199,7 +198,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                   char *s_buf_raw)
 {
     // Check that we don't try to support non-existing filter modes.
-    auto item_ct1 = sycl::ext::oneapi::experimental::this_nd_item<3>();
+    auto item_ct1 = sycl::ext::oneapi::this_work_item::get_nd_item<3>();
     static_assert(up == 1 || up == 2 || up == 4,
                   "only up=1, up=2, up=4 scales supported");
     static_assert(down == 1 || down == 2 || down == 4, "only down=1, down=2, down=4 scales supported");
@@ -263,7 +262,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
         auto &s_buf0_st = *sycl::ext::oneapi::group_local_memory_for_overwrite<
             scalar_t[(sharedKB > 48) ? (1 << 24)
                                      : (s_buf0_size + s_buf1_size)]>(
-            sycl::ext::oneapi::experimental::this_group<
+            sycl::ext::oneapi::this_work_item::get_work_group<
                 3>()); // Prevent launching if this isn't optimized away when
                        // unused.
         s_buf0 = s_buf0_st;
@@ -326,7 +325,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
           MIN(p.tilesXrep,
               p.tilesXdim -
                   p.tilesXrep *
-                      sycl::ext::oneapi::experimental::this_nd_item<3>()
+                      sycl::ext::oneapi::this_work_item::get_nd_item<3>()
                           .get_group(1)));
          tileIdx++)
     {
@@ -365,7 +364,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                            batchIdx * get_stride<index_t>(p.xStride.w());
         int idx = item_ct1.get_local_id(2);
         const int loopCountIN = CEIL_DIV(tileInW * tileInH, threadsPerBlock);
-        #pragma unroll
+#pragma unroll
         for (int loop = 0; loop < loopCountIN; loop++)
         {
             int relInX, relInY;
@@ -463,7 +462,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                             a = s_tileIn[src0 + step + 1];
                         }
                     }
-                    s_tileUpX[dst + 0] = v.x();
+                    s_tileUpX[dst+0] = v.x();
                     s_tileUpX[dst + 1] = v.y();
                     s_tileUpX[dst + 2] = v.z();
                     s_tileUpX[dst + 3] = v.w();
@@ -503,7 +502,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                             a = s_tileIn[src0 + step + 1];
                         }
                     }
-                    s_tileUpX[dst + 0] = v.x();
+                    s_tileUpX[dst+0] = v.x();
                     s_tileUpX[dst + 1] = v.y();
                 }
             }
@@ -656,8 +655,8 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 s |= dpct::experimental::
                                     permute_sub_group_by_xor(
                                         groupMask,
-                                        sycl::ext::oneapi::experimental::
-                                            this_sub_group(),
+                                        sycl::ext::oneapi::this_work_item::
+                                            get_sub_group(),
                                         s, 1);
                                 /*
                                 DPCT1108:5: '__shfl_xor_sync' was migrated with
@@ -669,8 +668,8 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 s |= dpct::experimental::
                                     permute_sub_group_by_xor(
                                         groupMask,
-                                        sycl::ext::oneapi::experimental::
-                                            this_sub_group(),
+                                        sycl::ext::oneapi::this_work_item::
+                                            get_sub_group(),
                                         s, 2);
 
                                 // Write signs.
@@ -729,8 +728,8 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 s |= dpct::experimental::
                                     permute_sub_group_by_xor(
                                         groupMask,
-                                        sycl::ext::oneapi::experimental::
-                                            this_sub_group(),
+                                        sycl::ext::oneapi::this_work_item::
+                                            get_sub_group(),
                                         s, 1);
                                 /*
                                 DPCT1108:7: '__shfl_xor_sync' was migrated with
@@ -742,8 +741,8 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 s |= dpct::experimental::
                                     permute_sub_group_by_xor(
                                         groupMask,
-                                        sycl::ext::oneapi::experimental::
-                                            this_sub_group(),
+                                        sycl::ext::oneapi::this_work_item::
+                                            get_sub_group(),
                                         s, 2);
 
                                 // Write signs.
@@ -903,8 +902,8 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 s |= dpct::experimental::
                                     permute_sub_group_by_xor(
                                         groupMask,
-                                        sycl::ext::oneapi::experimental::
-                                            this_sub_group(),
+                                        sycl::ext::oneapi::this_work_item::
+                                            get_sub_group(),
                                         s, 1);
                                 /*
                                 DPCT1108:9: '__shfl_xor_sync' was migrated with
@@ -916,8 +915,8 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 s |= dpct::experimental::
                                     permute_sub_group_by_xor(
                                         groupMask,
-                                        sycl::ext::oneapi::experimental::
-                                            this_sub_group(),
+                                        sycl::ext::oneapi::this_work_item::
+                                            get_sub_group(),
                                         s, 2);
 
                                 // Write signs.
@@ -958,8 +957,8 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 s |= dpct::experimental::
                                     permute_sub_group_by_xor(
                                         groupMask,
-                                        sycl::ext::oneapi::experimental::
-                                            this_sub_group(),
+                                        sycl::ext::oneapi::this_work_item::
+                                            get_sub_group(),
                                         s, 1);
                                 /*
                                 DPCT1108:11: '__shfl_xor_sync' was migrated with
@@ -971,8 +970,8 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 s |= dpct::experimental::
                                     permute_sub_group_by_xor(
                                         groupMask,
-                                        sycl::ext::oneapi::experimental::
-                                            this_sub_group(),
+                                        sycl::ext::oneapi::this_work_item::
+                                            get_sub_group(),
                                         s, 2);
 
                                 // Write signs.
@@ -1021,9 +1020,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                         s_tileUpXY[dst] = v.x();
                         if (relUpY0 < tileUpH - 1)
                             s_tileUpXY[dst + tileUpW] = v.y();
-                    }
-                    else
-                    {
+                    } else {
                         // Write directly into output buffer.
                         if ((uint32_t)x < p.yShape.x())
                         {
@@ -1327,8 +1324,8 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 s += dpct::experimental::
                                     permute_sub_group_by_xor(
                                         groupMask,
-                                        sycl::ext::oneapi::experimental::
-                                            this_sub_group(),
+                                        sycl::ext::oneapi::this_work_item::
+                                            get_sub_group(),
                                         s, 1); // Coalesce.
                                 /*
                                 DPCT1108:15: '__shfl_xor_sync' was migrated with
@@ -1340,8 +1337,8 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 s += dpct::experimental::
                                     permute_sub_group_by_xor(
                                         groupMask,
-                                        sycl::ext::oneapi::experimental::
-                                            this_sub_group(),
+                                        sycl::ext::oneapi::this_work_item::
+                                            get_sub_group(),
                                         s, 2); // Coalesce.
                                 p.s[si] = s;                            // Write.
                             }
@@ -1374,8 +1371,8 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 s += dpct::experimental::
                                     permute_sub_group_by_xor(
                                         groupMask,
-                                        sycl::ext::oneapi::experimental::
-                                            this_sub_group(),
+                                        sycl::ext::oneapi::this_work_item::
+                                            get_sub_group(),
                                         s, 1); // Coalesce.
                                 /*
                                 DPCT1108:17: '__shfl_xor_sync' was migrated with
@@ -1387,8 +1384,8 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 s += dpct::experimental::
                                     permute_sub_group_by_xor(
                                         groupMask,
-                                        sycl::ext::oneapi::experimental::
-                                            this_sub_group(),
+                                        sycl::ext::oneapi::this_work_item::
+                                            get_sub_group(),
                                         s, 2); // Coalesce.
                                 p.s[si] = s;                            // Write.
                             }
@@ -1470,7 +1467,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                         v.w() +=
                             s_tileUpXY[src0 + 12 + step] * (scalar_t)c_fd[step];
                     }
-                    s_tileDownX[idx + 0] = v.x();
+                    s_tileDownX[idx+0] = v.x();
                     s_tileDownX[idx + 1] = v.y();
                     s_tileDownX[idx + 2] = v.z();
                     s_tileDownX[idx + 3] = v.w();
@@ -1496,7 +1493,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                         v.y() += s_tileUpXY[src0 + down + step] *
                                  (scalar_t)c_fd[step];
                     }
-                    s_tileDownX[idx + 0] = v.x();
+                    s_tileDownX[idx+0] = v.x();
                     s_tileDownX[idx + 1] = v.y();
                 }
             }
@@ -1660,7 +1657,7 @@ register pressure.
 */
 static void filtered_lrelu_act_kernel(filtered_lrelu_act_kernel_params p)
 {
-    auto item_ct1 = sycl::ext::oneapi::experimental::this_nd_item<3>();
+    auto item_ct1 = sycl::ext::oneapi::this_work_item::get_nd_item<3>();
     typedef typename InternalType<T>::scalar_t scalar_t;
 
     // Indexing.
@@ -1689,7 +1686,7 @@ static void filtered_lrelu_act_kernel(filtered_lrelu_act_kernel_params p)
             {
                 int64_t ix = x * p.xStride.x() + y * p.xStride.y() +
                              z * p.xStride.z() + w * p.xStride.w();
-                T* pv = ((T*)p.x) + ix;
+                T *pv = ((T *)p.x) + ix;
                 scalar_t v = (scalar_t)(*pv);
 
                 // Gain, LReLU, clamp.
@@ -1723,7 +1720,7 @@ static void filtered_lrelu_act_kernel(filtered_lrelu_act_kernel_params p)
             compilers or runtimes. You may need to adjust the code.
             */
             s |= dpct::experimental::permute_sub_group_by_xor(
-                m, sycl::ext::oneapi::experimental::this_sub_group(), s,
+                m, sycl::ext::oneapi::this_work_item::get_sub_group(), s,
                 1); // Distribute.
             /*
             DPCT1108:23: '__shfl_xor_sync' was migrated with the experimental
@@ -1731,21 +1728,21 @@ static void filtered_lrelu_act_kernel(filtered_lrelu_act_kernel_params p)
             compilers or runtimes. You may need to adjust the code.
             */
             s |= dpct::experimental::permute_sub_group_by_xor(
-                m, sycl::ext::oneapi::experimental::this_sub_group(), s, 2);
+                m, sycl::ext::oneapi::this_work_item::get_sub_group(), s, 2);
             /*
             DPCT1108:24: '__shfl_xor_sync' was migrated with the experimental
             feature masked sub_group function which may not be supported by all
             compilers or runtimes. You may need to adjust the code.
             */
             s |= dpct::experimental::permute_sub_group_by_xor(
-                m, sycl::ext::oneapi::experimental::this_sub_group(), s, 4);
+                m, sycl::ext::oneapi::this_work_item::get_sub_group(), s, 4);
             /*
             DPCT1108:25: '__shfl_xor_sync' was migrated with the experimental
             feature masked sub_group function which may not be supported by all
             compilers or runtimes. You may need to adjust the code.
             */
             s |= dpct::experimental::permute_sub_group_by_xor(
-                m, sycl::ext::oneapi::experimental::this_sub_group(), s, 8);
+                m, sycl::ext::oneapi::this_work_item::get_sub_group(), s, 8);
 
             // Write signs if leader and in p.s.
             if (!(item_ct1.get_local_id(2) & 15) &&
@@ -1763,7 +1760,7 @@ static void filtered_lrelu_act_kernel(filtered_lrelu_act_kernel_params p)
             {
                 int64_t ix = x * p.xStride.x() + y * p.xStride.y() +
                              z * p.xStride.z() + w * p.xStride.w();
-                T* pv = ((T*)p.x) + ix;
+                T *pv = ((T *)p.x) + ix;
                 scalar_t v = (scalar_t)(*pv);
                 v *= p.gain;
 
@@ -1771,7 +1768,8 @@ static void filtered_lrelu_act_kernel(filtered_lrelu_act_kernel_params p)
                 uint32_t sx = x + p.sOfs.x();
                 uint32_t sy = y + p.sOfs.y();
 
-                // Read and apply signs if we land inside valid region of sign buffer.
+                // Read and apply signs if we land inside valid region of sign
+                // buffer.
                 if (sx < p.sShape.x() && sy < p.sShape.y())
                 {
                     uint64_t is = (sx >> 2) + (p.sShape.x() >> 2) *
@@ -1795,7 +1793,7 @@ static void filtered_lrelu_act_kernel(filtered_lrelu_act_kernel_params p)
             {
                 int64_t ix = x * p.xStride.x() + y * p.xStride.y() +
                              z * p.xStride.z() + w * p.xStride.w();
-                T* pv = ((T*)p.x) + ix;
+                T *pv = ((T *)p.x) + ix;
                 scalar_t v = (scalar_t)(*pv);
                 v *= p.gain;
                 if (v < 0.f)

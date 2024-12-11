@@ -114,11 +114,12 @@ static torch::Tensor upfirdn2d(torch::Tensor x, torch::Tensor f, int upx, int up
     [&]() {
     auto exp_props = sycl::ext::oneapi::experimental::properties{
         sycl::ext::oneapi::experimental::use_root_sync};
+
     ((sycl::queue *)(&static_cast<sycl::queue &>(
          c10::xpu::getCurrentXPUStream())))
         ->parallel_for(sycl::nd_range<3>(gridSize * blockSize, blockSize),
                        exp_props, [=](sycl::nd_item<3> item_ct1) {
-                        // (spec.kernel)();
+                         //(spec.kernel)();
                        });
     return 0;
     }();
