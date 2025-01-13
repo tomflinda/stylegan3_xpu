@@ -95,13 +95,13 @@ template <class T> __dpct_inline__ T get_stride(const int64_t &x)
 static dpct::global_memory<float, 1> g_fbuf(
     2 * MAX_FILTER_SIZE *
     MAX_FILTER_SIZE); // Filters in global memory, written by setup kernel.
-static __constant__ sycl::ext::oneapi::experimental::device_global<
-    float[2 * MAX_FILTER_SIZE * MAX_FILTER_SIZE]>
-    c_fbuf; // Filters in constant memory, read by main kernel.
+static dpct::constant_memory<float, 1>
+    c_fbuf(2 * MAX_FILTER_SIZE *
+           MAX_FILTER_SIZE); // Filters in constant memory, read by main kernel.
 
 // Accessors to combined buffers to index up/down filters individually.
 #define c_fu (c_fbuf)
-#define c_fd (c_fbuf.get() + MAX_FILTER_SIZE * MAX_FILTER_SIZE)
+#define c_fd (c_fbuf + MAX_FILTER_SIZE * MAX_FILTER_SIZE)
 #define g_fu (g_fbuf)
 #define g_fd (g_fbuf + MAX_FILTER_SIZE * MAX_FILTER_SIZE)
 
@@ -142,15 +142,32 @@ static void setup_filters_kernel(filtered_lrelu_kernel_params p, float *g_fbuf)
     }
 }
 
+// Auto generated SYCL kernel wrapper used to migration kernel function pointer.
+void setup_filters_kernel_wrapper(filtered_lrelu_kernel_params p) {
+  sycl::queue queue = *dpct::kernel_launcher::_que;
+  unsigned int localMemSize = dpct::kernel_launcher::_local_mem_size;
+  sycl::nd_range<3> nr = dpct::kernel_launcher::_nr;
+
+  g_fbuf.init(queue);
+
+  queue.submit([&](sycl::handler &cgh) {
+    auto g_fbuf_ptr_ct1 = g_fbuf.get_ptr();
+
+    cgh.parallel_for(nr, [=](sycl::nd_item<3> item_ct1) {
+      setup_filters_kernel(p, g_fbuf_ptr_ct1);
+    });
+  });
+}
+
 // Host function to copy filters written by setup kernel into constant buffer for main kernel.
 template <bool, bool> dpct::err0 copy_filters(dpct::queue_ptr stream) try {
     void *src = 0;
     dpct::err0 err = DPCT_CHECK_ERROR(*(&src) = g_fbuf.get_ptr());
     /*
-    DPCT1001:41: The statement could not be removed.
+    DPCT1001:31: The statement could not be removed.
     */
     /*
-    DPCT1000:42: Error handling if-stmt was detected but could not be rewritten.
+    DPCT1000:32: Error handling if-stmt was detected but could not be rewritten.
     */
     if (err) return err;
     return DPCT_CHECK_ERROR(
@@ -195,7 +212,7 @@ Consult with your hardware vendor to find the total register size available and
 adjust the code, or use smaller sub-group size to avoid high register pressure.
 */
 static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
-                                  char *s_buf_raw)
+                                  float const *c_fbuf, char *s_buf_raw)
 {
     // Check that we don't try to support non-existing filter modes.
     auto item_ct1 = sycl::ext::oneapi::this_work_item::get_nd_item<3>();
@@ -352,7 +369,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
             in converged control flow. You may need to adjust the code.
             */
             /*
-            DPCT1065:43: Consider replacing sycl::nd_item::barrier() with
+            DPCT1065:33: Consider replacing sycl::nd_item::barrier() with
             sycl::nd_item::barrier(sycl::access::fence_space::local_space) for
             better performance if there is no access to global memory.
             */
@@ -396,7 +413,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
             in converged control flow. You may need to adjust the code.
             */
             /*
-            DPCT1065:44: Consider replacing sycl::nd_item::barrier() with
+            DPCT1065:34: Consider replacing sycl::nd_item::barrier() with
             sycl::nd_item::barrier(sycl::access::fence_space::local_space) for
             better performance if there is no access to global memory.
             */
@@ -514,7 +531,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
             in converged control flow. You may need to adjust the code.
             */
             /*
-            DPCT1065:45: Consider replacing sycl::nd_item::barrier() with
+            DPCT1065:35: Consider replacing sycl::nd_item::barrier() with
             sycl::nd_item::barrier(sycl::access::fence_space::local_space) for
             better performance if there is no access to global memory.
             */
@@ -646,31 +663,49 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 uint32_t s = sx + sy + sw + sz;
                                 s <<= (signX & 3) << 1;
                                 /*
-                                DPCT1108:4: '__shfl_xor_sync' was migrated with
-                                the experimental feature masked sub_group
-                                function which may not be supported by all
-                                compilers or runtimes. You may need to adjust
-                                the code.
+                                DPCT1023:4: The SYCL sub-group does not support
+                                mask options for dpct::permute_sub_group_by_xor.
+                                You can specify
+                                "--use-experimental-features=masked-sub-group-operation"
+                                to use the experimental helper function to
+                                migrate __shfl_xor_sync.
                                 */
-                                s |= dpct::experimental::
-                                    permute_sub_group_by_xor(
-                                        groupMask,
-                                        sycl::ext::oneapi::this_work_item::
-                                            get_sub_group(),
-                                        s, 1);
                                 /*
-                                DPCT1108:5: '__shfl_xor_sync' was migrated with
-                                the experimental feature masked sub_group
-                                function which may not be supported by all
-                                compilers or runtimes. You may need to adjust
-                                the code.
+                                DPCT1096:50: The right-most dimension of the
+                                work-group used in the SYCL kernel that calls
+                                this function may be less than "32". The
+                                function "dpct::permute_sub_group_by_xor" may
+                                return an unexpected result on the CPU device.
+                                Modify the size of the work-group to ensure that
+                                the value of the right-most dimension is a
+                                multiple of "32".
                                 */
-                                s |= dpct::experimental::
-                                    permute_sub_group_by_xor(
-                                        groupMask,
-                                        sycl::ext::oneapi::this_work_item::
-                                            get_sub_group(),
-                                        s, 2);
+                                s |= dpct::permute_sub_group_by_xor(
+                                    sycl::ext::oneapi::this_work_item::
+                                        get_sub_group(),
+                                    s, 1);
+                                /*
+                                DPCT1023:5: The SYCL sub-group does not support
+                                mask options for dpct::permute_sub_group_by_xor.
+                                You can specify
+                                "--use-experimental-features=masked-sub-group-operation"
+                                to use the experimental helper function to
+                                migrate __shfl_xor_sync.
+                                */
+                                /*
+                                DPCT1096:51: The right-most dimension of the
+                                work-group used in the SYCL kernel that calls
+                                this function may be less than "32". The
+                                function "dpct::permute_sub_group_by_xor" may
+                                return an unexpected result on the CPU device.
+                                Modify the size of the work-group to ensure that
+                                the value of the right-most dimension is a
+                                multiple of "32".
+                                */
+                                s |= dpct::permute_sub_group_by_xor(
+                                    sycl::ext::oneapi::this_work_item::
+                                        get_sub_group(),
+                                    s, 2);
 
                                 // Write signs.
                                 if ((uint32_t)(signY + 0) < sShapeMaxY) { p.s[si0] = (unsigned char)(s >>  0); }
@@ -719,31 +754,49 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 uint32_t s = sx + sy + sw + sz;
                                 s <<= (signX & 3) << 1;
                                 /*
-                                DPCT1108:6: '__shfl_xor_sync' was migrated with
-                                the experimental feature masked sub_group
-                                function which may not be supported by all
-                                compilers or runtimes. You may need to adjust
-                                the code.
+                                DPCT1023:6: The SYCL sub-group does not support
+                                mask options for dpct::permute_sub_group_by_xor.
+                                You can specify
+                                "--use-experimental-features=masked-sub-group-operation"
+                                to use the experimental helper function to
+                                migrate __shfl_xor_sync.
                                 */
-                                s |= dpct::experimental::
-                                    permute_sub_group_by_xor(
-                                        groupMask,
-                                        sycl::ext::oneapi::this_work_item::
-                                            get_sub_group(),
-                                        s, 1);
                                 /*
-                                DPCT1108:7: '__shfl_xor_sync' was migrated with
-                                the experimental feature masked sub_group
-                                function which may not be supported by all
-                                compilers or runtimes. You may need to adjust
-                                the code.
+                                DPCT1096:52: The right-most dimension of the
+                                work-group used in the SYCL kernel that calls
+                                this function may be less than "32". The
+                                function "dpct::permute_sub_group_by_xor" may
+                                return an unexpected result on the CPU device.
+                                Modify the size of the work-group to ensure that
+                                the value of the right-most dimension is a
+                                multiple of "32".
                                 */
-                                s |= dpct::experimental::
-                                    permute_sub_group_by_xor(
-                                        groupMask,
-                                        sycl::ext::oneapi::this_work_item::
-                                            get_sub_group(),
-                                        s, 2);
+                                s |= dpct::permute_sub_group_by_xor(
+                                    sycl::ext::oneapi::this_work_item::
+                                        get_sub_group(),
+                                    s, 1);
+                                /*
+                                DPCT1023:7: The SYCL sub-group does not support
+                                mask options for dpct::permute_sub_group_by_xor.
+                                You can specify
+                                "--use-experimental-features=masked-sub-group-operation"
+                                to use the experimental helper function to
+                                migrate __shfl_xor_sync.
+                                */
+                                /*
+                                DPCT1096:53: The right-most dimension of the
+                                work-group used in the SYCL kernel that calls
+                                this function may be less than "32". The
+                                function "dpct::permute_sub_group_by_xor" may
+                                return an unexpected result on the CPU device.
+                                Modify the size of the work-group to ensure that
+                                the value of the right-most dimension is a
+                                multiple of "32".
+                                */
+                                s |= dpct::permute_sub_group_by_xor(
+                                    sycl::ext::oneapi::this_work_item::
+                                        get_sub_group(),
+                                    s, 2);
 
                                 // Write signs.
                                 if ((uint32_t)(signY + 0) < sShapeMaxY) { p.s[si0] = (unsigned char)(s >>  0); }
@@ -893,31 +946,49 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 int s = sx + sy;
                                 s <<= signXo;
                                 /*
-                                DPCT1108:8: '__shfl_xor_sync' was migrated with
-                                the experimental feature masked sub_group
-                                function which may not be supported by all
-                                compilers or runtimes. You may need to adjust
-                                the code.
+                                DPCT1023:8: The SYCL sub-group does not support
+                                mask options for dpct::permute_sub_group_by_xor.
+                                You can specify
+                                "--use-experimental-features=masked-sub-group-operation"
+                                to use the experimental helper function to
+                                migrate __shfl_xor_sync.
                                 */
-                                s |= dpct::experimental::
-                                    permute_sub_group_by_xor(
-                                        groupMask,
-                                        sycl::ext::oneapi::this_work_item::
-                                            get_sub_group(),
-                                        s, 1);
                                 /*
-                                DPCT1108:9: '__shfl_xor_sync' was migrated with
-                                the experimental feature masked sub_group
-                                function which may not be supported by all
-                                compilers or runtimes. You may need to adjust
-                                the code.
+                                DPCT1096:54: The right-most dimension of the
+                                work-group used in the SYCL kernel that calls
+                                this function may be less than "32". The
+                                function "dpct::permute_sub_group_by_xor" may
+                                return an unexpected result on the CPU device.
+                                Modify the size of the work-group to ensure that
+                                the value of the right-most dimension is a
+                                multiple of "32".
                                 */
-                                s |= dpct::experimental::
-                                    permute_sub_group_by_xor(
-                                        groupMask,
-                                        sycl::ext::oneapi::this_work_item::
-                                            get_sub_group(),
-                                        s, 2);
+                                s |= dpct::permute_sub_group_by_xor(
+                                    sycl::ext::oneapi::this_work_item::
+                                        get_sub_group(),
+                                    s, 1);
+                                /*
+                                DPCT1023:9: The SYCL sub-group does not support
+                                mask options for dpct::permute_sub_group_by_xor.
+                                You can specify
+                                "--use-experimental-features=masked-sub-group-operation"
+                                to use the experimental helper function to
+                                migrate __shfl_xor_sync.
+                                */
+                                /*
+                                DPCT1096:55: The right-most dimension of the
+                                work-group used in the SYCL kernel that calls
+                                this function may be less than "32". The
+                                function "dpct::permute_sub_group_by_xor" may
+                                return an unexpected result on the CPU device.
+                                Modify the size of the work-group to ensure that
+                                the value of the right-most dimension is a
+                                multiple of "32".
+                                */
+                                s |= dpct::permute_sub_group_by_xor(
+                                    sycl::ext::oneapi::this_work_item::
+                                        get_sub_group(),
+                                    s, 2);
 
                                 // Write signs.
                                 if ((uint32_t)(signY + 0) < sShapeMaxY) { p.s[si0] = (unsigned char)(s >>  0); }
@@ -948,31 +1019,49 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 int s = sx + sy;
                                 s <<= signXo;
                                 /*
-                                DPCT1108:10: '__shfl_xor_sync' was migrated with
-                                the experimental feature masked sub_group
-                                function which may not be supported by all
-                                compilers or runtimes. You may need to adjust
-                                the code.
+                                DPCT1023:10: The SYCL sub-group does not support
+                                mask options for dpct::permute_sub_group_by_xor.
+                                You can specify
+                                "--use-experimental-features=masked-sub-group-operation"
+                                to use the experimental helper function to
+                                migrate __shfl_xor_sync.
                                 */
-                                s |= dpct::experimental::
-                                    permute_sub_group_by_xor(
-                                        groupMask,
-                                        sycl::ext::oneapi::this_work_item::
-                                            get_sub_group(),
-                                        s, 1);
                                 /*
-                                DPCT1108:11: '__shfl_xor_sync' was migrated with
-                                the experimental feature masked sub_group
-                                function which may not be supported by all
-                                compilers or runtimes. You may need to adjust
-                                the code.
+                                DPCT1096:56: The right-most dimension of the
+                                work-group used in the SYCL kernel that calls
+                                this function may be less than "32". The
+                                function "dpct::permute_sub_group_by_xor" may
+                                return an unexpected result on the CPU device.
+                                Modify the size of the work-group to ensure that
+                                the value of the right-most dimension is a
+                                multiple of "32".
                                 */
-                                s |= dpct::experimental::
-                                    permute_sub_group_by_xor(
-                                        groupMask,
-                                        sycl::ext::oneapi::this_work_item::
-                                            get_sub_group(),
-                                        s, 2);
+                                s |= dpct::permute_sub_group_by_xor(
+                                    sycl::ext::oneapi::this_work_item::
+                                        get_sub_group(),
+                                    s, 1);
+                                /*
+                                DPCT1023:11: The SYCL sub-group does not support
+                                mask options for dpct::permute_sub_group_by_xor.
+                                You can specify
+                                "--use-experimental-features=masked-sub-group-operation"
+                                to use the experimental helper function to
+                                migrate __shfl_xor_sync.
+                                */
+                                /*
+                                DPCT1096:57: The right-most dimension of the
+                                work-group used in the SYCL kernel that calls
+                                this function may be less than "32". The
+                                function "dpct::permute_sub_group_by_xor" may
+                                return an unexpected result on the CPU device.
+                                Modify the size of the work-group to ensure that
+                                the value of the right-most dimension is a
+                                multiple of "32".
+                                */
+                                s |= dpct::permute_sub_group_by_xor(
+                                    sycl::ext::oneapi::this_work_item::
+                                        get_sub_group(),
+                                    s, 2);
 
                                 // Write signs.
                                 if ((uint32_t)(signY + 0) < sShapeMaxY) { p.s[si0] = (unsigned char)(s >>  0); }
@@ -1055,7 +1144,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                 the code.
                 */
                 /*
-                DPCT1065:46: Consider replacing sycl::nd_item::barrier() with
+                DPCT1065:36: Consider replacing sycl::nd_item::barrier() with
                 sycl::nd_item::barrier(sycl::access::fence_space::local_space)
                 for better performance if there is no access to global memory.
                 */
@@ -1267,7 +1356,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                 the code.
                 */
                 /*
-                DPCT1065:47: Consider replacing sycl::nd_item::barrier() with
+                DPCT1065:37: Consider replacing sycl::nd_item::barrier() with
                 sycl::nd_item::barrier(sycl::access::fence_space::local_space)
                 for better performance if there is no access to global memory.
                 */
@@ -1315,31 +1404,49 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 (uint32_t)signY < p.sShape.y() && signY >= minY)
                             {
                                 /*
-                                DPCT1108:14: '__shfl_xor_sync' was migrated with
-                                the experimental feature masked sub_group
-                                function which may not be supported by all
-                                compilers or runtimes. You may need to adjust
-                                the code.
+                                DPCT1023:14: The SYCL sub-group does not support
+                                mask options for dpct::permute_sub_group_by_xor.
+                                You can specify
+                                "--use-experimental-features=masked-sub-group-operation"
+                                to use the experimental helper function to
+                                migrate __shfl_xor_sync.
                                 */
-                                s += dpct::experimental::
-                                    permute_sub_group_by_xor(
-                                        groupMask,
-                                        sycl::ext::oneapi::this_work_item::
-                                            get_sub_group(),
-                                        s, 1); // Coalesce.
                                 /*
-                                DPCT1108:15: '__shfl_xor_sync' was migrated with
-                                the experimental feature masked sub_group
-                                function which may not be supported by all
-                                compilers or runtimes. You may need to adjust
-                                the code.
+                                DPCT1096:58: The right-most dimension of the
+                                work-group used in the SYCL kernel that calls
+                                this function may be less than "32". The
+                                function "dpct::permute_sub_group_by_xor" may
+                                return an unexpected result on the CPU device.
+                                Modify the size of the work-group to ensure that
+                                the value of the right-most dimension is a
+                                multiple of "32".
                                 */
-                                s += dpct::experimental::
-                                    permute_sub_group_by_xor(
-                                        groupMask,
-                                        sycl::ext::oneapi::this_work_item::
-                                            get_sub_group(),
-                                        s, 2); // Coalesce.
+                                s += dpct::permute_sub_group_by_xor(
+                                    sycl::ext::oneapi::this_work_item::
+                                        get_sub_group(),
+                                    s, 1); // Coalesce.
+                                /*
+                                DPCT1023:15: The SYCL sub-group does not support
+                                mask options for dpct::permute_sub_group_by_xor.
+                                You can specify
+                                "--use-experimental-features=masked-sub-group-operation"
+                                to use the experimental helper function to
+                                migrate __shfl_xor_sync.
+                                */
+                                /*
+                                DPCT1096:59: The right-most dimension of the
+                                work-group used in the SYCL kernel that calls
+                                this function may be less than "32". The
+                                function "dpct::permute_sub_group_by_xor" may
+                                return an unexpected result on the CPU device.
+                                Modify the size of the work-group to ensure that
+                                the value of the right-most dimension is a
+                                multiple of "32".
+                                */
+                                s += dpct::permute_sub_group_by_xor(
+                                    sycl::ext::oneapi::this_work_item::
+                                        get_sub_group(),
+                                    s, 2); // Coalesce.
                                 p.s[si] = s;                            // Write.
                             }
                         }
@@ -1362,31 +1469,49 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                     v = InternalType<T>::clamp(v, p.clamp);
                                 }
                                 /*
-                                DPCT1108:16: '__shfl_xor_sync' was migrated with
-                                the experimental feature masked sub_group
-                                function which may not be supported by all
-                                compilers or runtimes. You may need to adjust
-                                the code.
+                                DPCT1023:16: The SYCL sub-group does not support
+                                mask options for dpct::permute_sub_group_by_xor.
+                                You can specify
+                                "--use-experimental-features=masked-sub-group-operation"
+                                to use the experimental helper function to
+                                migrate __shfl_xor_sync.
                                 */
-                                s += dpct::experimental::
-                                    permute_sub_group_by_xor(
-                                        groupMask,
-                                        sycl::ext::oneapi::this_work_item::
-                                            get_sub_group(),
-                                        s, 1); // Coalesce.
                                 /*
-                                DPCT1108:17: '__shfl_xor_sync' was migrated with
-                                the experimental feature masked sub_group
-                                function which may not be supported by all
-                                compilers or runtimes. You may need to adjust
-                                the code.
+                                DPCT1096:60: The right-most dimension of the
+                                work-group used in the SYCL kernel that calls
+                                this function may be less than "32". The
+                                function "dpct::permute_sub_group_by_xor" may
+                                return an unexpected result on the CPU device.
+                                Modify the size of the work-group to ensure that
+                                the value of the right-most dimension is a
+                                multiple of "32".
                                 */
-                                s += dpct::experimental::
-                                    permute_sub_group_by_xor(
-                                        groupMask,
-                                        sycl::ext::oneapi::this_work_item::
-                                            get_sub_group(),
-                                        s, 2); // Coalesce.
+                                s += dpct::permute_sub_group_by_xor(
+                                    sycl::ext::oneapi::this_work_item::
+                                        get_sub_group(),
+                                    s, 1); // Coalesce.
+                                /*
+                                DPCT1023:17: The SYCL sub-group does not support
+                                mask options for dpct::permute_sub_group_by_xor.
+                                You can specify
+                                "--use-experimental-features=masked-sub-group-operation"
+                                to use the experimental helper function to
+                                migrate __shfl_xor_sync.
+                                */
+                                /*
+                                DPCT1096:61: The right-most dimension of the
+                                work-group used in the SYCL kernel that calls
+                                this function may be less than "32". The
+                                function "dpct::permute_sub_group_by_xor" may
+                                return an unexpected result on the CPU device.
+                                Modify the size of the work-group to ensure that
+                                the value of the right-most dimension is a
+                                multiple of "32".
+                                */
+                                s += dpct::permute_sub_group_by_xor(
+                                    sycl::ext::oneapi::this_work_item::
+                                        get_sub_group(),
+                                    s, 2); // Coalesce.
                                 p.s[si] = s;                            // Write.
                             }
                             else
@@ -1438,7 +1563,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
             in converged control flow. You may need to adjust the code.
             */
             /*
-            DPCT1065:48: Consider replacing sycl::nd_item::barrier() with
+            DPCT1065:38: Consider replacing sycl::nd_item::barrier() with
             sycl::nd_item::barrier(sycl::access::fence_space::local_space) for
             better performance if there is no access to global memory.
             */
@@ -1522,7 +1647,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
             in converged control flow. You may need to adjust the code.
             */
             /*
-            DPCT1065:49: Consider replacing sycl::nd_item::barrier() with
+            DPCT1065:39: Consider replacing sycl::nd_item::barrier() with
             sycl::nd_item::barrier(sycl::access::fence_space::local_space) for
             better performance if there is no access to global memory.
             */
@@ -1561,7 +1686,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                 the code.
                 */
                 /*
-                DPCT1065:50: Consider replacing sycl::nd_item::barrier() with
+                DPCT1065:40: Consider replacing sycl::nd_item::barrier() with
                 sycl::nd_item::barrier(sycl::access::fence_space::local_space)
                 for better performance if there is no access to global memory.
                 */
@@ -1613,7 +1738,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                 the code.
                 */
                 /*
-                DPCT1065:51: Consider replacing sycl::nd_item::barrier() with
+                DPCT1065:41: Consider replacing sycl::nd_item::barrier() with
                 sycl::nd_item::barrier(sycl::access::fence_space::local_space)
                 for better performance if there is no access to global memory.
                 */
@@ -1643,9 +1768,41 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
     }
 }
 
+// Auto generated SYCL kernel wrapper used to migration kernel function pointer.
+template <class T, class index_t, int sharedKB, bool signWrite, bool signRead,
+          int filterMode, int up, int fuSize, int down, int fdSize,
+          int tileOutW, int tileOutH, int threadsPerBlock, bool enableXrep,
+          bool enableWriteSkip>
+void filtered_lrelu_kernel_wrapper(filtered_lrelu_kernel_params p) {
+  sycl::queue queue = *dpct::kernel_launcher::_que;
+  unsigned int localMemSize = dpct::kernel_launcher::_local_mem_size;
+  sycl::nd_range<3> nr = dpct::kernel_launcher::_nr;
+
+  c_fbuf.init(queue);
+
+  queue.submit([&](sycl::handler &cgh) {
+    auto c_fbuf_ptr_ct1 = c_fbuf.get_ptr();
+
+    sycl::local_accessor<char, 1> s_buf_raw_acc_ct1(
+        sycl::range<1>(localMemSize), cgh);
+
+    cgh.parallel_for(nr, [=](sycl::nd_item<3>
+                                 item_ct1) [[intel::reqd_sub_group_size(32)]] {
+      filtered_lrelu_kernel<T, index_t, sharedKB, signWrite, signRead,
+                            filterMode, up, fuSize, down, fdSize, tileOutW,
+                            tileOutH, threadsPerBlock, enableXrep,
+                            enableWriteSkip>(
+          p, c_fbuf_ptr_ct1,
+          s_buf_raw_acc_ct1.get_multi_ptr<sycl::access::decorated::no>().get());
+    });
+  });
+}
+
 //------------------------------------------------------------------------
-// Compute activation function and signs for upsampled data tensor, modifying data tensor in-place. Used for accelerating the generic variant.
-// Sign tensor is known to be contiguous, and p.x and p.s have the same z, w dimensions. 64-bit indexing is always used.
+// Compute activation function and signs for upsampled data tensor, modifying
+// data tensor in-place. Used for accelerating the generic variant. Sign tensor
+// is known to be contiguous, and p.x and p.s have the same z, w dimensions.
+// 64-bit indexing is always used.
 
 template <class T, bool signWrite, bool signRead>
 /*
@@ -1697,7 +1854,7 @@ static void filtered_lrelu_act_kernel(filtered_lrelu_act_kernel_params p)
                     s = 1; // Sign.
                 }
                 /*
-                DPCT1064:52: Migrated fabsf call is used in a macro/template
+                DPCT1064:42: Migrated fabsf call is used in a macro/template
                 definition and may not be valid for all macro/template uses.
                 Adjust the code.
                 */
@@ -1715,34 +1872,70 @@ static void filtered_lrelu_act_kernel(filtered_lrelu_act_kernel_params p)
                 (item_ct1.get_local_id(2) & 16) ? 0xffff0000u : 0x0000ffffu;
             s <<= ((item_ct1.get_local_id(2) & 15) << 1); // Shift into place.
             /*
-            DPCT1108:22: '__shfl_xor_sync' was migrated with the experimental
-            feature masked sub_group function which may not be supported by all
-            compilers or runtimes. You may need to adjust the code.
+            DPCT1023:22: The SYCL sub-group does not support mask options for
+            dpct::permute_sub_group_by_xor. You can specify
+            "--use-experimental-features=masked-sub-group-operation" to use the
+            experimental helper function to migrate __shfl_xor_sync.
             */
-            s |= dpct::experimental::permute_sub_group_by_xor(
-                m, sycl::ext::oneapi::this_work_item::get_sub_group(), s,
+            /*
+            DPCT1096:62: The right-most dimension of the work-group used in the
+            SYCL kernel that calls this function may be less than "32". The
+            function "dpct::permute_sub_group_by_xor" may return an unexpected
+            result on the CPU device. Modify the size of the work-group to
+            ensure that the value of the right-most dimension is a multiple of
+            "32".
+            */
+            s |= dpct::permute_sub_group_by_xor(
+                sycl::ext::oneapi::this_work_item::get_sub_group(), s,
                 1); // Distribute.
             /*
-            DPCT1108:23: '__shfl_xor_sync' was migrated with the experimental
-            feature masked sub_group function which may not be supported by all
-            compilers or runtimes. You may need to adjust the code.
+            DPCT1023:23: The SYCL sub-group does not support mask options for
+            dpct::permute_sub_group_by_xor. You can specify
+            "--use-experimental-features=masked-sub-group-operation" to use the
+            experimental helper function to migrate __shfl_xor_sync.
             */
-            s |= dpct::experimental::permute_sub_group_by_xor(
-                m, sycl::ext::oneapi::this_work_item::get_sub_group(), s, 2);
             /*
-            DPCT1108:24: '__shfl_xor_sync' was migrated with the experimental
-            feature masked sub_group function which may not be supported by all
-            compilers or runtimes. You may need to adjust the code.
+            DPCT1096:63: The right-most dimension of the work-group used in the
+            SYCL kernel that calls this function may be less than "32". The
+            function "dpct::permute_sub_group_by_xor" may return an unexpected
+            result on the CPU device. Modify the size of the work-group to
+            ensure that the value of the right-most dimension is a multiple of
+            "32".
             */
-            s |= dpct::experimental::permute_sub_group_by_xor(
-                m, sycl::ext::oneapi::this_work_item::get_sub_group(), s, 4);
+            s |= dpct::permute_sub_group_by_xor(
+                sycl::ext::oneapi::this_work_item::get_sub_group(), s, 2);
             /*
-            DPCT1108:25: '__shfl_xor_sync' was migrated with the experimental
-            feature masked sub_group function which may not be supported by all
-            compilers or runtimes. You may need to adjust the code.
+            DPCT1023:24: The SYCL sub-group does not support mask options for
+            dpct::permute_sub_group_by_xor. You can specify
+            "--use-experimental-features=masked-sub-group-operation" to use the
+            experimental helper function to migrate __shfl_xor_sync.
             */
-            s |= dpct::experimental::permute_sub_group_by_xor(
-                m, sycl::ext::oneapi::this_work_item::get_sub_group(), s, 8);
+            /*
+            DPCT1096:64: The right-most dimension of the work-group used in the
+            SYCL kernel that calls this function may be less than "32". The
+            function "dpct::permute_sub_group_by_xor" may return an unexpected
+            result on the CPU device. Modify the size of the work-group to
+            ensure that the value of the right-most dimension is a multiple of
+            "32".
+            */
+            s |= dpct::permute_sub_group_by_xor(
+                sycl::ext::oneapi::this_work_item::get_sub_group(), s, 4);
+            /*
+            DPCT1023:25: The SYCL sub-group does not support mask options for
+            dpct::permute_sub_group_by_xor. You can specify
+            "--use-experimental-features=masked-sub-group-operation" to use the
+            experimental helper function to migrate __shfl_xor_sync.
+            */
+            /*
+            DPCT1096:65: The right-most dimension of the work-group used in the
+            SYCL kernel that calls this function may be less than "32". The
+            function "dpct::permute_sub_group_by_xor" may return an unexpected
+            result on the CPU device. Modify the size of the work-group to
+            ensure that the value of the right-most dimension is a multiple of
+            "32".
+            */
+            s |= dpct::permute_sub_group_by_xor(
+                sycl::ext::oneapi::this_work_item::get_sub_group(), s, 8);
 
             // Write signs if leader and in p.s.
             if (!(item_ct1.get_local_id(2) & 15) &&
@@ -1799,7 +1992,7 @@ static void filtered_lrelu_act_kernel(filtered_lrelu_act_kernel_params p)
                 if (v < 0.f)
                     v *= p.slope;
                 /*
-                DPCT1064:53: Migrated fabsf call is used in a macro/template
+                DPCT1064:43: Migrated fabsf call is used in a macro/template
                 definition and may not be valid for all macro/template uses.
                 Adjust the code.
                 */
@@ -1811,9 +2004,27 @@ static void filtered_lrelu_act_kernel(filtered_lrelu_act_kernel_params p)
     }
 }
 
-template <class T, bool signWrite, bool signRead> void* choose_filtered_lrelu_act_kernel(void)
+// Auto generated SYCL kernel wrapper used to migration kernel function pointer.
+template <class T, bool signWrite, bool signRead>
+void filtered_lrelu_act_kernel_wrapper(filtered_lrelu_act_kernel_params p) {
+  sycl::queue queue = *dpct::kernel_launcher::_que;
+  unsigned int localMemSize = dpct::kernel_launcher::_local_mem_size;
+  sycl::nd_range<3> nr = dpct::kernel_launcher::_nr;
+
+  dpct::has_capability_or_fail(queue.get_device(), {sycl::aspect::fp64});
+
+  queue.parallel_for(
+      nr, [=](sycl::nd_item<3> item_ct1) [[intel::reqd_sub_group_size(32)]] {
+        filtered_lrelu_act_kernel<T, signWrite, signRead>(p);
+      });
+}
+
+template <class T, bool signWrite, bool signRead>
+void *choose_filtered_lrelu_act_kernel(void)
 {
-    return (void*)filtered_lrelu_act_kernel<T, signWrite, signRead>;
+    return (void *)dpct::wrapper_register(
+               filtered_lrelu_act_kernel_wrapper<T, signWrite, signRead>)
+        .get();
 }
 
 //------------------------------------------------------------------------
@@ -1845,9 +2056,12 @@ template <class T, class index_t, bool signWrite, bool signRead> filtered_lrelu_
                                   "downscaling filter size must be multiple "  \
                                   "of downscaling factor");                    \
                     s.setup = (void *)setup_filters_kernel;                    \
-                    s.exec = (void *)filtered_lrelu_kernel<                    \
-                        T, index_t, SH, signWrite, signRead, MODE, U, FU, D,   \
-                        FD, TW, TH, W * 32, !!XR, !!WS>;                       \
+                    s.exec =                                                   \
+                        (void *)dpct::wrapper_register(                        \
+                            filtered_lrelu_kernel_wrapper<                     \
+                                T, index_t, SH, signWrite, signRead, MODE, U,  \
+                                FU, D, FD, TW, TH, W * 32, !!XR, !!WS>)        \
+                            .get();                                            \
                     s.tileOut = sycl::int2(TW, TH);                            \
                     s.numWarps = W;                                            \
                     s.xrep = XR;                                               \
