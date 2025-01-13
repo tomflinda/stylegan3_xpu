@@ -44,7 +44,7 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
     // Figure out how much shared memory is available on the device.
     int maxSharedBytes = 0;
     /*
-    DPCT1019:56: local_mem_size in SYCL is not a complete equivalent of
+    DPCT1019:46: local_mem_size in SYCL is not a complete equivalent of
     cudaDevAttrMaxSharedMemoryPerBlockOptin in CUDA. You may need to adjust the
     code.
     */
@@ -223,30 +223,9 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
     }
 
     // Launch filter setup kernel.
-    /*
-    DPCT1049:33: The work-group size passed to the SYCL kernel may exceed the
-    limit. To get the device limit, query info::device::max_work_group_size.
-    Adjust the work-group size if needed.
-    */
-    /*
-    DPCT1123:34: The kernel function pointer cannot be used in the device code.
-    You need to call the kernel function with the correct argument(s) directly.
-    According to the kernel function definition, adjusting the dimension of the
-    sycl::nd_item may also be required.
-    */
-  [&]() {
-    auto exp_props = sycl::ext::oneapi::experimental::properties{
-        sycl::ext::oneapi::experimental::use_root_sync};
-
-    ((sycl::queue *)(&static_cast<sycl::queue &>(
-         c10::xpu::getCurrentXPUStream())))
-        ->parallel_for(sycl::nd_range<3>(sycl::range<3>(1, 1, 1024),
-                                         sycl::range<3>(1, 1, 1024)),
-                       exp_props, [=](sycl::nd_item<3> item_ct1) {
-                         //(spec.setup)();
-                       });
-    return 0;
-  }();
+    DPCT_CHECK_ERROR(dpct::kernel_launcher::launch(
+        spec.setup, 1, 1024, args, 0,
+        &static_cast<sycl::queue &>(c10::xpu::getCurrentXPUStream())));
 
     // Copy kernels to constant memory.
     if      ( writeSigns && !readSigns) (copy_filters<true,  false>(&static_cast<sycl::queue &>(c10::xpu::getCurrentXPUStream())));
@@ -255,18 +234,18 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
 
     // Set cache and shared memory configurations for main kernel.
     /*
-    DPCT1027:57: The call to cudaFuncSetCacheConfig was replaced with 0 because
+    DPCT1027:47: The call to cudaFuncSetCacheConfig was replaced with 0 because
     SYCL currently does not support configuring shared memory on devices.
     */
     0;
     if (spec.dynamicSharedKB) // Need dynamically allocated shared memory?
         /*
-        DPCT1027:58: The call to cudaFuncSetAttribute was replaced with 0
+        DPCT1027:48: The call to cudaFuncSetAttribute was replaced with 0
         because SYCL currently does not support corresponding setting.
         */
         0;
     /*
-    DPCT1027:59: The call to cudaFuncSetSharedMemConfig was replaced with 0
+    DPCT1027:49: The call to cudaFuncSetSharedMemConfig was replaced with 0
     because SYCL currently does not support configuring shared memory on
     devices.
     */
@@ -278,34 +257,13 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
     {
         p.blockZofs = zofs;
         int subGz = std::min(maxSubGz, gz - zofs);
-        /*
-        DPCT1049:35: The work-group size passed to the SYCL kernel may exceed
-        the limit. To get the device limit, query
-        info::device::max_work_group_size. Adjust the work-group size if needed.
-        */
-        /*
-        DPCT1123:36: The kernel function pointer cannot be used in the device
-        code. You need to call the kernel function with the correct argument(s)
-        directly. According to the kernel function definition, adjusting the
-        dimension of the sycl::nd_item may also be required.
-        */
-    [&]() {
-      auto exp_props = sycl::ext::oneapi::experimental::properties{
-          sycl::ext::oneapi::experimental::use_root_sync};
+        DPCT_CHECK_ERROR(dpct::kernel_launcher::launch(
+            spec.exec, dpct::dim3(gx, gy, subGz), bx, args,
+            spec.dynamicSharedKB << 10,
+            &static_cast<sycl::queue &>(c10::xpu::getCurrentXPUStream())));
+    }
 
-      ((sycl::queue *)(&static_cast<sycl::queue &>(
-           c10::xpu::getCurrentXPUStream())))
-          ->parallel_for(sycl::nd_range<3>(sycl::range<3>(subGz, gy, gx) *
-                                               sycl::range<3>(1, 1, bx),
-                                           sycl::range<3>(1, 1, bx)),
-                         exp_props, [=](sycl::nd_item<3> item_ct1) {
-                           //(spec.exec)();
-                         });
-      return 0;
-    }();
-  }
-
-  // Done.
+    // Done.
     return std::make_tuple(y, so, 0);
 }
 
@@ -390,31 +348,9 @@ static torch::Tensor filtered_lrelu_act(torch::Tensor x, torch::Tensor si, int s
     gz = std::min(gz, gmax);
 
     // Launch.
-    /*
-    DPCT1049:37: The work-group size passed to the SYCL kernel may exceed the
-    limit. To get the device limit, query info::device::max_work_group_size.
-    Adjust the work-group size if needed.
-    */
-    /*
-    DPCT1123:38: The kernel function pointer cannot be used in the device code.
-    You need to call the kernel function with the correct argument(s) directly.
-    According to the kernel function definition, adjusting the dimension of the
-    sycl::nd_item may also be required.
-    */
-  [&]() {
-    auto exp_props = sycl::ext::oneapi::experimental::properties{
-        sycl::ext::oneapi::experimental::use_root_sync};
-
-    ((sycl::queue *)(&static_cast<sycl::queue &>(
-         c10::xpu::getCurrentXPUStream())))
-        ->parallel_for(sycl::nd_range<3>(sycl::range<3>(gz, gy, gx) *
-                                             sycl::range<3>(1, 1, bx),
-                                         sycl::range<3>(1, 1, bx)),
-                       exp_props, [=](sycl::nd_item<3> item_ct1) {
-                         // func();
-                       });
-    return 0;
-  }();
+    DPCT_CHECK_ERROR(dpct::kernel_launcher::launch(
+        func, dpct::dim3(gx, gy, gz), bx, args, 0,
+        &static_cast<sycl::queue &>(c10::xpu::getCurrentXPUStream())));
     return so;
 }
 

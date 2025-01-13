@@ -114,13 +114,27 @@ template <class T> static void upfirdn2d_kernel_large(upfirdn2d_kernel_params p)
     }
 }
 
+// Auto generated SYCL kernel wrapper used to migration kernel function pointer.
+template <class T>
+void upfirdn2d_kernel_large_wrapper(upfirdn2d_kernel_params p) {
+  sycl::queue queue = *dpct::kernel_launcher::_que;
+  unsigned int localMemSize = dpct::kernel_launcher::_local_mem_size;
+  sycl::nd_range<3> nr = dpct::kernel_launcher::_nr;
+
+  dpct::has_capability_or_fail(queue.get_device(), {sycl::aspect::fp64});
+
+  queue.parallel_for(nr, [=](sycl::nd_item<3> item_ct1) {
+    upfirdn2d_kernel_large<T>(p);
+  });
+}
+
 //------------------------------------------------------------------------
 // Specialized CUDA implementation for small filters.
 
 template <class T, int upx, int upy, int downx, int downy, int filterW,
           int filterH, int tileOutW, int tileOutH, int loopMinor>
 /*
-DPCT1110:27: The total declared local variable size in device function
+DPCT1110:28: The total declared local variable size in device function
 upfirdn2d_kernel_small exceeds 128 bytes and may cause high register pressure.
 Consult with your hardware vendor to find the total register size available and
 adjust the code, or use smaller sub-group size to avoid high register pressure.
@@ -183,11 +197,11 @@ static void upfirdn2d_kernel_small(upfirdn2d_kernel_params p)
             int tileInX = floor_div(tileMidX, upx);
             int tileInY = floor_div(tileMidY, upy);
             /*
-            DPCT1118:28: SYCL group functions and algorithms must be encountered
+            DPCT1118:29: SYCL group functions and algorithms must be encountered
             in converged control flow. You may need to adjust the code.
             */
             /*
-            DPCT1065:54: Consider replacing sycl::nd_item::barrier() with
+            DPCT1065:44: Consider replacing sycl::nd_item::barrier() with
             sycl::nd_item::barrier(sycl::access::fence_space::local_space) for
             better performance if there is no access to global memory.
             */
@@ -216,11 +230,11 @@ static void upfirdn2d_kernel_small(upfirdn2d_kernel_params p)
 
             // Loop over output pixels.
             /*
-            DPCT1118:29: SYCL group functions and algorithms must be encountered
+            DPCT1118:30: SYCL group functions and algorithms must be encountered
             in converged control flow. You may need to adjust the code.
             */
             /*
-            DPCT1065:55: Consider replacing sycl::nd_item::barrier() with
+            DPCT1065:45: Consider replacing sycl::nd_item::barrier() with
             sycl::nd_item::barrier(sycl::access::fence_space::local_space) for
             better performance if there is no access to global memory.
             */
@@ -268,177 +282,601 @@ static void upfirdn2d_kernel_small(upfirdn2d_kernel_params p)
     }
 }
 
+// Auto generated SYCL kernel wrapper used to migration kernel function pointer.
+template <class T, int upx, int upy, int downx, int downy, int filterW,
+          int filterH, int tileOutW, int tileOutH, int loopMinor>
+void upfirdn2d_kernel_small_wrapper(upfirdn2d_kernel_params p) {
+  sycl::queue queue = *dpct::kernel_launcher::_que;
+  unsigned int localMemSize = dpct::kernel_launcher::_local_mem_size;
+  sycl::nd_range<3> nr = dpct::kernel_launcher::_nr;
+
+  dpct::has_capability_or_fail(queue.get_device(), {sycl::aspect::fp64});
+
+  queue.parallel_for(nr, [=](sycl::nd_item<3> item_ct1) {
+    upfirdn2d_kernel_small<T, upx, upy, downx, downy, filterW, filterH,
+                           tileOutW, tileOutH, loopMinor>(p);
+  });
+}
+
 //------------------------------------------------------------------------
 // CUDA kernel selection.
 
 template <class T> upfirdn2d_kernel_spec choose_upfirdn2d_kernel(const upfirdn2d_kernel_params& p)
 {
     int s = p.inStride.z(), fx = p.filterSize.x(), fy = p.filterSize.y();
-    upfirdn2d_kernel_spec spec = {(void*)upfirdn2d_kernel_large<T>, -1,-1,1, 4}; // contiguous
-    if (s == 1)           spec = {(void*)upfirdn2d_kernel_large<T>, -1,-1,4, 1}; // channels_last
+    upfirdn2d_kernel_spec spec = {
+        (void *)dpct::wrapper_register(upfirdn2d_kernel_large_wrapper<T>).get(),
+        -1, -1, 1, 4}; // contiguous
+    if (s == 1) spec = {
+        (void *)dpct::wrapper_register(upfirdn2d_kernel_large_wrapper<T>).get(),
+        -1, -1, 4, 1}; // channels_last
 
     // No up/downsampling.
     if (p.up.x() == 1 && p.up.y() == 1 && p.down.x() == 1 && p.down.y() == 1)
     {
         // contiguous
-        if (s != 1 && fx <= 24 && fy <= 24) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 24,24, 64,32,1>, 64,32,1, 1};
-        if (s != 1 && fx <= 16 && fy <= 16) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 16,16, 64,32,1>, 64,32,1, 1};
-        if (s != 1 && fx <= 7  && fy <= 7 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 7,7,   64,16,1>, 64,16,1, 1};
-        if (s != 1 && fx <= 6  && fy <= 6 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 6,6,   64,16,1>, 64,16,1, 1};
-        if (s != 1 && fx <= 5  && fy <= 5 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 5,5,   64,16,1>, 64,16,1, 1};
-        if (s != 1 && fx <= 4  && fy <= 4 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 4,4,   64,16,1>, 64,16,1, 1};
-        if (s != 1 && fx <= 3  && fy <= 3 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 3,3,   64,16,1>, 64,16,1, 1};
-        if (s != 1 && fx <= 24 && fy <= 1 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 24,1,  128,8,1>, 128,8,1, 1};
-        if (s != 1 && fx <= 16 && fy <= 1 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 16,1,  128,8,1>, 128,8,1, 1};
-        if (s != 1 && fx <= 8  && fy <= 1 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 8,1,   128,8,1>, 128,8,1, 1};
-        if (s != 1 && fx <= 1  && fy <= 24) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 1,24,  32,32,1>, 32,32,1, 1};
-        if (s != 1 && fx <= 1  && fy <= 16) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 1,16,  32,32,1>, 32,32,1, 1};
-        if (s != 1 && fx <= 1  && fy <= 8 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 1,8,   32,32,1>, 32,32,1, 1};
+        if (s != 1 && fx <= 24 && fy <= 24)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 24, 24,
+                                                       64, 32, 1>)
+                        .get(),
+                    64, 32, 1, 1};
+        if (s != 1 && fx <= 16 && fy <= 16)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 16, 16,
+                                                       64, 32, 1>)
+                        .get(),
+                    64, 32, 1, 1};
+        if (s != 1 && fx <= 7 && fy <= 7) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 7, 7, 64, 16, 1>)
+                .get(),
+            64, 16, 1, 1};
+        if (s != 1 && fx <= 6 && fy <= 6) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 6, 6, 64, 16, 1>)
+                .get(),
+            64, 16, 1, 1};
+        if (s != 1 && fx <= 5 && fy <= 5) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 5, 5, 64, 16, 1>)
+                .get(),
+            64, 16, 1, 1};
+        if (s != 1 && fx <= 4 && fy <= 4) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 4, 4, 64, 16, 1>)
+                .get(),
+            64, 16, 1, 1};
+        if (s != 1 && fx <= 3 && fy <= 3) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 3, 3, 64, 16, 1>)
+                .get(),
+            64, 16, 1, 1};
+        if (s != 1 && fx <= 24 && fy <= 1) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 24, 1, 128, 8, 1>)
+                .get(),
+            128, 8, 1, 1};
+        if (s != 1 && fx <= 16 && fy <= 1) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 16, 1, 128, 8, 1>)
+                .get(),
+            128, 8, 1, 1};
+        if (s != 1 && fx <= 8 && fy <= 1) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 8, 1, 128, 8, 1>)
+                .get(),
+            128, 8, 1, 1};
+        if (s != 1 && fx <= 1 && fy <= 24) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 1, 24, 32, 32, 1>)
+                .get(),
+            32, 32, 1, 1};
+        if (s != 1 && fx <= 1 && fy <= 16) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 1, 16, 32, 32, 1>)
+                .get(),
+            32, 32, 1, 1};
+        if (s != 1 && fx <= 1 && fy <= 8) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 1, 8, 32, 32, 1>)
+                .get(),
+            32, 32, 1, 1};
         // channels_last
-        if (s == 1 && fx <= 24 && fy <= 24) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 24,24, 32,32,1>,  32,32,1,  1};
-        if (s == 1 && fx <= 16 && fy <= 16) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 16,16, 32,32,1>,  32,32,1,  1};
-        if (s == 1 && fx <= 7  && fy <= 7 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 7,7,   16,16,8>,  16,16,8,  1};
-        if (s == 1 && fx <= 6  && fy <= 6 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 6,6,   16,16,8>,  16,16,8,  1};
-        if (s == 1 && fx <= 5  && fy <= 5 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 5,5,   16,16,8>,  16,16,8,  1};
-        if (s == 1 && fx <= 4  && fy <= 4 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 4,4,   16,16,8>,  16,16,8,  1};
-        if (s == 1 && fx <= 3  && fy <= 3 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 3,3,   16,16,8>,  16,16,8,  1};
-        if (s == 1 && fx <= 24 && fy <= 1 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 24,1,  128,1,16>, 128,1,16, 1};
-        if (s == 1 && fx <= 16 && fy <= 1 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 16,1,  128,1,16>, 128,1,16, 1};
-        if (s == 1 && fx <= 8  && fy <= 1 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 8,1,   128,1,16>, 128,1,16, 1};
-        if (s == 1 && fx <= 1  && fy <= 24) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 1,24,  1,128,16>, 1,128,16, 1};
-        if (s == 1 && fx <= 1  && fy <= 16) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 1,16,  1,128,16>, 1,128,16, 1};
-        if (s == 1 && fx <= 1  && fy <= 8 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,1, 1,8,   1,128,16>, 1,128,16, 1};
+        if (s == 1 && fx <= 24 && fy <= 24)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 24, 24,
+                                                       32, 32, 1>)
+                        .get(),
+                    32, 32, 1, 1};
+        if (s == 1 && fx <= 16 && fy <= 16)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 16, 16,
+                                                       32, 32, 1>)
+                        .get(),
+                    32, 32, 1, 1};
+        if (s == 1 && fx <= 7 && fy <= 7) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 7, 7, 16, 16, 8>)
+                .get(),
+            16, 16, 8, 1};
+        if (s == 1 && fx <= 6 && fy <= 6) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 6, 6, 16, 16, 8>)
+                .get(),
+            16, 16, 8, 1};
+        if (s == 1 && fx <= 5 && fy <= 5) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 5, 5, 16, 16, 8>)
+                .get(),
+            16, 16, 8, 1};
+        if (s == 1 && fx <= 4 && fy <= 4) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 4, 4, 16, 16, 8>)
+                .get(),
+            16, 16, 8, 1};
+        if (s == 1 && fx <= 3 && fy <= 3) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 3, 3, 16, 16, 8>)
+                .get(),
+            16, 16, 8, 1};
+        if (s == 1 && fx <= 24 && fy <= 1)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 24, 1,
+                                                       128, 1, 16>)
+                        .get(),
+                    128, 1, 16, 1};
+        if (s == 1 && fx <= 16 && fy <= 1)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 16, 1,
+                                                       128, 1, 16>)
+                        .get(),
+                    128, 1, 16, 1};
+        if (s == 1 && fx <= 8 && fy <= 1) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 8, 1, 128, 1, 16>)
+                .get(),
+            128, 1, 16, 1};
+        if (s == 1 && fx <= 1 && fy <= 24)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 1, 24, 1,
+                                                       128, 16>)
+                        .get(),
+                    1, 128, 16, 1};
+        if (s == 1 && fx <= 1 && fy <= 16)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 1, 16, 1,
+                                                       128, 16>)
+                        .get(),
+                    1, 128, 16, 1};
+        if (s == 1 && fx <= 1 && fy <= 8) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 1, 1, 8, 1, 128, 16>)
+                .get(),
+            1, 128, 16, 1};
     }
 
     // 2x upsampling.
     if (p.up.x() == 2 && p.up.y() == 2 && p.down.x() == 1 && p.down.y() == 1)
     {
         // contiguous
-        if (s != 1 && fx <= 24 && fy <= 24) spec = {(void*)upfirdn2d_kernel_small<T, 2,2, 1,1, 24,24, 64,32,1>, 64,32,1, 1};
-        if (s != 1 && fx <= 16 && fy <= 16) spec = {(void*)upfirdn2d_kernel_small<T, 2,2, 1,1, 16,16, 64,32,1>, 64,32,1, 1};
-        if (s != 1 && fx <= 8  && fy <= 8 ) spec = {(void*)upfirdn2d_kernel_small<T, 2,2, 1,1, 8,8,   64,16,1>, 64,16,1, 1};
-        if (s != 1 && fx <= 6  && fy <= 6 ) spec = {(void*)upfirdn2d_kernel_small<T, 2,2, 1,1, 6,6,   64,16,1>, 64,16,1, 1};
-        if (s != 1 && fx <= 4  && fy <= 4 ) spec = {(void*)upfirdn2d_kernel_small<T, 2,2, 1,1, 4,4,   64,16,1>, 64,16,1, 1};
-        if (s != 1 && fx <= 2  && fy <= 2 ) spec = {(void*)upfirdn2d_kernel_small<T, 2,2, 1,1, 2,2,   64,16,1>, 64,16,1, 1};
+        if (s != 1 && fx <= 24 && fy <= 24)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 2, 2, 1, 1, 24, 24,
+                                                       64, 32, 1>)
+                        .get(),
+                    64, 32, 1, 1};
+        if (s != 1 && fx <= 16 && fy <= 16)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 2, 2, 1, 1, 16, 16,
+                                                       64, 32, 1>)
+                        .get(),
+                    64, 32, 1, 1};
+        if (s != 1 && fx <= 8 && fy <= 8) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 2, 2, 1, 1, 8, 8, 64, 16, 1>)
+                .get(),
+            64, 16, 1, 1};
+        if (s != 1 && fx <= 6 && fy <= 6) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 2, 2, 1, 1, 6, 6, 64, 16, 1>)
+                .get(),
+            64, 16, 1, 1};
+        if (s != 1 && fx <= 4 && fy <= 4) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 2, 2, 1, 1, 4, 4, 64, 16, 1>)
+                .get(),
+            64, 16, 1, 1};
+        if (s != 1 && fx <= 2 && fy <= 2) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 2, 2, 1, 1, 2, 2, 64, 16, 1>)
+                .get(),
+            64, 16, 1, 1};
         // channels_last
-        if (s == 1 && fx <= 24 && fy <= 24) spec = {(void*)upfirdn2d_kernel_small<T, 2,2, 1,1, 24,24, 32,32,1>, 32,32,1, 1};
-        if (s == 1 && fx <= 16 && fy <= 16) spec = {(void*)upfirdn2d_kernel_small<T, 2,2, 1,1, 16,16, 32,32,1>, 32,32,1, 1};
-        if (s == 1 && fx <= 8  && fy <= 8 ) spec = {(void*)upfirdn2d_kernel_small<T, 2,2, 1,1, 8,8,   16,16,8>, 16,16,8, 1};
-        if (s == 1 && fx <= 6  && fy <= 6 ) spec = {(void*)upfirdn2d_kernel_small<T, 2,2, 1,1, 6,6,   16,16,8>, 16,16,8, 1};
-        if (s == 1 && fx <= 4  && fy <= 4 ) spec = {(void*)upfirdn2d_kernel_small<T, 2,2, 1,1, 4,4,   16,16,8>, 16,16,8, 1};
-        if (s == 1 && fx <= 2  && fy <= 2 ) spec = {(void*)upfirdn2d_kernel_small<T, 2,2, 1,1, 2,2,   16,16,8>, 16,16,8, 1};
+        if (s == 1 && fx <= 24 && fy <= 24)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 2, 2, 1, 1, 24, 24,
+                                                       32, 32, 1>)
+                        .get(),
+                    32, 32, 1, 1};
+        if (s == 1 && fx <= 16 && fy <= 16)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 2, 2, 1, 1, 16, 16,
+                                                       32, 32, 1>)
+                        .get(),
+                    32, 32, 1, 1};
+        if (s == 1 && fx <= 8 && fy <= 8) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 2, 2, 1, 1, 8, 8, 16, 16, 8>)
+                .get(),
+            16, 16, 8, 1};
+        if (s == 1 && fx <= 6 && fy <= 6) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 2, 2, 1, 1, 6, 6, 16, 16, 8>)
+                .get(),
+            16, 16, 8, 1};
+        if (s == 1 && fx <= 4 && fy <= 4) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 2, 2, 1, 1, 4, 4, 16, 16, 8>)
+                .get(),
+            16, 16, 8, 1};
+        if (s == 1 && fx <= 2 && fy <= 2) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 2, 2, 1, 1, 2, 2, 16, 16, 8>)
+                .get(),
+            16, 16, 8, 1};
     }
     if (p.up.x() == 2 && p.up.y() == 1 && p.down.x() == 1 && p.down.y() == 1)
     {
         // contiguous
-        if (s != 1 && fx <= 24 && fy <= 1) spec = {(void*)upfirdn2d_kernel_small<T, 2,1, 1,1, 24,1, 128,8,1>, 128,8,1, 1};
-        if (s != 1 && fx <= 16 && fy <= 1) spec = {(void*)upfirdn2d_kernel_small<T, 2,1, 1,1, 16,1, 128,8,1>, 128,8,1, 1};
-        if (s != 1 && fx <= 8  && fy <= 1) spec = {(void*)upfirdn2d_kernel_small<T, 2,1, 1,1, 8,1,  128,8,1>, 128,8,1, 1};
+        if (s != 1 && fx <= 24 && fy <= 1) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 2, 1, 1, 1, 24, 1, 128, 8, 1>)
+                .get(),
+            128, 8, 1, 1};
+        if (s != 1 && fx <= 16 && fy <= 1) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 2, 1, 1, 1, 16, 1, 128, 8, 1>)
+                .get(),
+            128, 8, 1, 1};
+        if (s != 1 && fx <= 8 && fy <= 1) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 2, 1, 1, 1, 8, 1, 128, 8, 1>)
+                .get(),
+            128, 8, 1, 1};
         // channels_last
-        if (s == 1 && fx <= 24 && fy <= 1) spec = {(void*)upfirdn2d_kernel_small<T, 2,1, 1,1, 24,1, 128,1,16>, 128,1,16, 1};
-        if (s == 1 && fx <= 16 && fy <= 1) spec = {(void*)upfirdn2d_kernel_small<T, 2,1, 1,1, 16,1, 128,1,16>, 128,1,16, 1};
-        if (s == 1 && fx <= 8  && fy <= 1) spec = {(void*)upfirdn2d_kernel_small<T, 2,1, 1,1, 8,1,  128,1,16>, 128,1,16, 1};
+        if (s == 1 && fx <= 24 && fy <= 1)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 2, 1, 1, 1, 24, 1,
+                                                       128, 1, 16>)
+                        .get(),
+                    128, 1, 16, 1};
+        if (s == 1 && fx <= 16 && fy <= 1)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 2, 1, 1, 1, 16, 1,
+                                                       128, 1, 16>)
+                        .get(),
+                    128, 1, 16, 1};
+        if (s == 1 && fx <= 8 && fy <= 1) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 2, 1, 1, 1, 8, 1, 128, 1, 16>)
+                .get(),
+            128, 1, 16, 1};
     }
     if (p.up.x() == 1 && p.up.y() == 2 && p.down.x() == 1 && p.down.y() == 1)
     {
         // contiguous
-        if (s != 1 && fx <= 1 && fy <= 24) spec = {(void*)upfirdn2d_kernel_small<T, 1,2, 1,1, 1,24, 32,32,1>, 32,32,1, 1};
-        if (s != 1 && fx <= 1 && fy <= 16) spec = {(void*)upfirdn2d_kernel_small<T, 1,2, 1,1, 1,16, 32,32,1>, 32,32,1, 1};
-        if (s != 1 && fx <= 1 && fy <= 8 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,2, 1,1, 1,8,  32,32,1>, 32,32,1, 1};
+        if (s != 1 && fx <= 1 && fy <= 24) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 2, 1, 1, 1, 24, 32, 32, 1>)
+                .get(),
+            32, 32, 1, 1};
+        if (s != 1 && fx <= 1 && fy <= 16) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 2, 1, 1, 1, 16, 32, 32, 1>)
+                .get(),
+            32, 32, 1, 1};
+        if (s != 1 && fx <= 1 && fy <= 8) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 2, 1, 1, 1, 8, 32, 32, 1>)
+                .get(),
+            32, 32, 1, 1};
         // channels_last
-        if (s == 1 && fx <= 1 && fy <= 24) spec = {(void*)upfirdn2d_kernel_small<T, 1,2, 1,1, 1,24, 1,128,16>, 1,128,16, 1};
-        if (s == 1 && fx <= 1 && fy <= 16) spec = {(void*)upfirdn2d_kernel_small<T, 1,2, 1,1, 1,16, 1,128,16>, 1,128,16, 1};
-        if (s == 1 && fx <= 1 && fy <= 8 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,2, 1,1, 1,8,  1,128,16>, 1,128,16, 1};
+        if (s == 1 && fx <= 1 && fy <= 24)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 1, 2, 1, 1, 1, 24, 1,
+                                                       128, 16>)
+                        .get(),
+                    1, 128, 16, 1};
+        if (s == 1 && fx <= 1 && fy <= 16)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 1, 2, 1, 1, 1, 16, 1,
+                                                       128, 16>)
+                        .get(),
+                    1, 128, 16, 1};
+        if (s == 1 && fx <= 1 && fy <= 8) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 2, 1, 1, 1, 8, 1, 128, 16>)
+                .get(),
+            1, 128, 16, 1};
     }
 
     // 2x downsampling.
     if (p.up.x() == 1 && p.up.y() == 1 && p.down.x() == 2 && p.down.y() == 2)
     {
         // contiguous
-        if (s != 1 && fx <= 24 && fy <= 24) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 2,2, 24,24, 32,16,1>, 32,16,1, 1};
-        if (s != 1 && fx <= 16 && fy <= 16) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 2,2, 16,16, 32,16,1>, 32,16,1, 1};
-        if (s != 1 && fx <= 8  && fy <= 8 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 2,2, 8,8,   32,8,1>,  32,8,1,  1};
-        if (s != 1 && fx <= 6  && fy <= 6 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 2,2, 6,6,   32,8,1>,  32,8,1,  1};
-        if (s != 1 && fx <= 4  && fy <= 4 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 2,2, 4,4,   32,8,1>,  32,8,1,  1};
-        if (s != 1 && fx <= 2  && fy <= 2 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 2,2, 2,2,   32,8,1>,  32,8,1,  1};
+        if (s != 1 && fx <= 24 && fy <= 24)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 1, 1, 2, 2, 24, 24,
+                                                       32, 16, 1>)
+                        .get(),
+                    32, 16, 1, 1};
+        if (s != 1 && fx <= 16 && fy <= 16)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 1, 1, 2, 2, 16, 16,
+                                                       32, 16, 1>)
+                        .get(),
+                    32, 16, 1, 1};
+        if (s != 1 && fx <= 8 && fy <= 8) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 2, 2, 8, 8, 32, 8, 1>)
+                .get(),
+            32, 8, 1, 1};
+        if (s != 1 && fx <= 6 && fy <= 6) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 2, 2, 6, 6, 32, 8, 1>)
+                .get(),
+            32, 8, 1, 1};
+        if (s != 1 && fx <= 4 && fy <= 4) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 2, 2, 4, 4, 32, 8, 1>)
+                .get(),
+            32, 8, 1, 1};
+        if (s != 1 && fx <= 2 && fy <= 2) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 2, 2, 2, 2, 32, 8, 1>)
+                .get(),
+            32, 8, 1, 1};
         // channels_last
-        if (s == 1 && fx <= 24 && fy <= 24) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 2,2, 24,24, 16,16,1>, 16,16,1, 1};
-        if (s == 1 && fx <= 16 && fy <= 16) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 2,2, 16,16, 16,16,1>, 16,16,1, 1};
-        if (s == 1 && fx <= 8  && fy <= 8 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 2,2, 8,8,   8,8,8>,   8,8,8,   1};
-        if (s == 1 && fx <= 6  && fy <= 6 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 2,2, 6,6,   8,8,8>,   8,8,8,   1};
-        if (s == 1 && fx <= 4  && fy <= 4 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 2,2, 4,4,   8,8,8>,   8,8,8,   1};
-        if (s == 1 && fx <= 2  && fy <= 2 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 2,2, 2,2,   8,8,8>,   8,8,8,   1};
+        if (s == 1 && fx <= 24 && fy <= 24)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 1, 1, 2, 2, 24, 24,
+                                                       16, 16, 1>)
+                        .get(),
+                    16, 16, 1, 1};
+        if (s == 1 && fx <= 16 && fy <= 16)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 1, 1, 2, 2, 16, 16,
+                                                       16, 16, 1>)
+                        .get(),
+                    16, 16, 1, 1};
+        if (s == 1 && fx <= 8 && fy <= 8) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 2, 2, 8, 8, 8, 8, 8>)
+                .get(),
+            8, 8, 8, 1};
+        if (s == 1 && fx <= 6 && fy <= 6) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 2, 2, 6, 6, 8, 8, 8>)
+                .get(),
+            8, 8, 8, 1};
+        if (s == 1 && fx <= 4 && fy <= 4) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 2, 2, 4, 4, 8, 8, 8>)
+                .get(),
+            8, 8, 8, 1};
+        if (s == 1 && fx <= 2 && fy <= 2) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 2, 2, 2, 2, 8, 8, 8>)
+                .get(),
+            8, 8, 8, 1};
     }
     if (p.up.x() == 1 && p.up.y() == 1 && p.down.x() == 2 && p.down.y() == 1)
     {
         // contiguous
-        if (s != 1 && fx <= 24 && fy <= 1) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 2,1, 24,1, 64,8,1>, 64,8,1, 1};
-        if (s != 1 && fx <= 16 && fy <= 1) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 2,1, 16,1, 64,8,1>, 64,8,1, 1};
-        if (s != 1 && fx <= 8  && fy <= 1) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 2,1, 8,1,  64,8,1>, 64,8,1, 1};
+        if (s != 1 && fx <= 24 && fy <= 1) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 2, 1, 24, 1, 64, 8, 1>)
+                .get(),
+            64, 8, 1, 1};
+        if (s != 1 && fx <= 16 && fy <= 1) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 2, 1, 16, 1, 64, 8, 1>)
+                .get(),
+            64, 8, 1, 1};
+        if (s != 1 && fx <= 8 && fy <= 1) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 2, 1, 8, 1, 64, 8, 1>)
+                .get(),
+            64, 8, 1, 1};
         // channels_last
-        if (s == 1 && fx <= 24 && fy <= 1) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 2,1, 24,1, 64,1,8>, 64,1,8, 1};
-        if (s == 1 && fx <= 16 && fy <= 1) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 2,1, 16,1, 64,1,8>, 64,1,8, 1};
-        if (s == 1 && fx <= 8  && fy <= 1) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 2,1, 8,1,  64,1,8>, 64,1,8, 1};
+        if (s == 1 && fx <= 24 && fy <= 1) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 2, 1, 24, 1, 64, 1, 8>)
+                .get(),
+            64, 1, 8, 1};
+        if (s == 1 && fx <= 16 && fy <= 1) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 2, 1, 16, 1, 64, 1, 8>)
+                .get(),
+            64, 1, 8, 1};
+        if (s == 1 && fx <= 8 && fy <= 1) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 2, 1, 8, 1, 64, 1, 8>)
+                .get(),
+            64, 1, 8, 1};
     }
     if (p.up.x() == 1 && p.up.y() == 1 && p.down.x() == 1 && p.down.y() == 2)
     {
         // contiguous
-        if (s != 1 && fx <= 1 && fy <= 24) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,2, 1,24, 32,16,1>, 32,16,1, 1};
-        if (s != 1 && fx <= 1 && fy <= 16) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,2, 1,16, 32,16,1>, 32,16,1, 1};
-        if (s != 1 && fx <= 1 && fy <= 8 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,2, 1,8,  32,16,1>, 32,16,1, 1};
+        if (s != 1 && fx <= 1 && fy <= 24) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 2, 1, 24, 32, 16, 1>)
+                .get(),
+            32, 16, 1, 1};
+        if (s != 1 && fx <= 1 && fy <= 16) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 2, 1, 16, 32, 16, 1>)
+                .get(),
+            32, 16, 1, 1};
+        if (s != 1 && fx <= 1 && fy <= 8) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 2, 1, 8, 32, 16, 1>)
+                .get(),
+            32, 16, 1, 1};
         // channels_last
-        if (s == 1 && fx <= 1  && fy <= 24) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,2, 1,24, 1,64,8>, 1,64,8, 1};
-        if (s == 1 && fx <= 1  && fy <= 16) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,2, 1,16, 1,64,8>, 1,64,8, 1};
-        if (s == 1 && fx <= 1  && fy <= 8 ) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,2, 1,8,  1,64,8>, 1,64,8, 1};
+        if (s == 1 && fx <= 1 && fy <= 24) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 2, 1, 24, 1, 64, 8>)
+                .get(),
+            1, 64, 8, 1};
+        if (s == 1 && fx <= 1 && fy <= 16) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 2, 1, 16, 1, 64, 8>)
+                .get(),
+            1, 64, 8, 1};
+        if (s == 1 && fx <= 1 && fy <= 8) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 2, 1, 8, 1, 64, 8>)
+                .get(),
+            1, 64, 8, 1};
     }
 
     // 4x upsampling.
     if (p.up.x() == 4 && p.up.y() == 4 && p.down.x() == 1 && p.down.y() == 1)
     {
         // contiguous
-        if (s != 1 && fx <= 48 && fy <= 48) spec = {(void*)upfirdn2d_kernel_small<T, 4,4, 1,1, 48,48, 64,32,1>, 64,32,1, 1};
-        if (s != 1 && fx <= 32 && fy <= 32) spec = {(void*)upfirdn2d_kernel_small<T, 4,4, 1,1, 32,32, 64,32,1>, 64,32,1, 1};
+        if (s != 1 && fx <= 48 && fy <= 48)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 4, 4, 1, 1, 48, 48,
+                                                       64, 32, 1>)
+                        .get(),
+                    64, 32, 1, 1};
+        if (s != 1 && fx <= 32 && fy <= 32)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 4, 4, 1, 1, 32, 32,
+                                                       64, 32, 1>)
+                        .get(),
+                    64, 32, 1, 1};
         // channels_last
-        if (s == 1 && fx <= 48 && fy <= 48) spec = {(void*)upfirdn2d_kernel_small<T, 4,4, 1,1, 48,48, 32,32,1>, 32,32,1, 1};
-        if (s == 1 && fx <= 32 && fy <= 32) spec = {(void*)upfirdn2d_kernel_small<T, 4,4, 1,1, 32,32, 32,32,1>, 32,32,1, 1};
+        if (s == 1 && fx <= 48 && fy <= 48)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 4, 4, 1, 1, 48, 48,
+                                                       32, 32, 1>)
+                        .get(),
+                    32, 32, 1, 1};
+        if (s == 1 && fx <= 32 && fy <= 32)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 4, 4, 1, 1, 32, 32,
+                                                       32, 32, 1>)
+                        .get(),
+                    32, 32, 1, 1};
     }
     if (p.up.x() == 4 && p.up.y() == 1 && p.down.x() == 1 && p.down.y() == 1)
     {
         // contiguous
-        if (s != 1 && fx <= 48 && fy <= 1) spec = {(void*)upfirdn2d_kernel_small<T, 4,1, 1,1, 48,1, 128,8,1>, 128,8,1, 1};
-        if (s != 1 && fx <= 32 && fy <= 1) spec = {(void*)upfirdn2d_kernel_small<T, 4,1, 1,1, 32,1, 128,8,1>, 128,8,1, 1};
+        if (s != 1 && fx <= 48 && fy <= 1) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 4, 1, 1, 1, 48, 1, 128, 8, 1>)
+                .get(),
+            128, 8, 1, 1};
+        if (s != 1 && fx <= 32 && fy <= 1) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 4, 1, 1, 1, 32, 1, 128, 8, 1>)
+                .get(),
+            128, 8, 1, 1};
         // channels_last
-        if (s == 1 && fx <= 48 && fy <= 1) spec = {(void*)upfirdn2d_kernel_small<T, 4,1, 1,1, 48,1, 128,1,16>, 128,1,16, 1};
-        if (s == 1 && fx <= 32 && fy <= 1) spec = {(void*)upfirdn2d_kernel_small<T, 4,1, 1,1, 32,1, 128,1,16>, 128,1,16, 1};
+        if (s == 1 && fx <= 48 && fy <= 1)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 4, 1, 1, 1, 48, 1,
+                                                       128, 1, 16>)
+                        .get(),
+                    128, 1, 16, 1};
+        if (s == 1 && fx <= 32 && fy <= 1)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 4, 1, 1, 1, 32, 1,
+                                                       128, 1, 16>)
+                        .get(),
+                    128, 1, 16, 1};
     }
     if (p.up.x() == 1 && p.up.y() == 4 && p.down.x() == 1 && p.down.y() == 1)
     {
         // contiguous
-        if (s != 1 && fx <= 1 && fy <= 48) spec = {(void*)upfirdn2d_kernel_small<T, 1,4, 1,1, 1,48, 32,32,1>, 32,32,1, 1};
-        if (s != 1 && fx <= 1 && fy <= 32) spec = {(void*)upfirdn2d_kernel_small<T, 1,4, 1,1, 1,32, 32,32,1>, 32,32,1, 1};
+        if (s != 1 && fx <= 1 && fy <= 48) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 4, 1, 1, 1, 48, 32, 32, 1>)
+                .get(),
+            32, 32, 1, 1};
+        if (s != 1 && fx <= 1 && fy <= 32) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 4, 1, 1, 1, 32, 32, 32, 1>)
+                .get(),
+            32, 32, 1, 1};
         // channels_last
-        if (s == 1 && fx <= 1 && fy <= 48) spec = {(void*)upfirdn2d_kernel_small<T, 1,4, 1,1, 1,48, 1,128,16>, 1,128,16, 1};
-        if (s == 1 && fx <= 1 && fy <= 32) spec = {(void*)upfirdn2d_kernel_small<T, 1,4, 1,1, 1,32, 1,128,16>, 1,128,16, 1};
+        if (s == 1 && fx <= 1 && fy <= 48)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 1, 4, 1, 1, 1, 48, 1,
+                                                       128, 16>)
+                        .get(),
+                    1, 128, 16, 1};
+        if (s == 1 && fx <= 1 && fy <= 32)
+            spec = {(void *)dpct::wrapper_register(
+                        upfirdn2d_kernel_small_wrapper<T, 1, 4, 1, 1, 1, 32, 1,
+                                                       128, 16>)
+                        .get(),
+                    1, 128, 16, 1};
     }
 
     // 4x downsampling (inefficient).
     if (p.up.x() == 1 && p.up.y() == 1 && p.down.x() == 4 && p.down.y() == 1)
     {
         // contiguous
-        if (s != 1 && fx <= 48 && fy <= 1) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 4,1, 48,1, 32,8,1>, 32,8,1, 1};
-        if (s != 1 && fx <= 32 && fy <= 1) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 4,1, 32,1, 32,8,1>, 32,8,1, 1};
+        if (s != 1 && fx <= 48 && fy <= 1) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 4, 1, 48, 1, 32, 8, 1>)
+                .get(),
+            32, 8, 1, 1};
+        if (s != 1 && fx <= 32 && fy <= 1) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 4, 1, 32, 1, 32, 8, 1>)
+                .get(),
+            32, 8, 1, 1};
         // channels_last
-        if (s == 1 && fx <= 48 && fy <= 1) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 4,1, 48,1, 32,1,8>, 32,1,8, 1};
-        if (s == 1 && fx <= 32 && fy <= 1) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 4,1, 32,1, 32,1,8>, 32,1,8, 1};
+        if (s == 1 && fx <= 48 && fy <= 1) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 4, 1, 48, 1, 32, 1, 8>)
+                .get(),
+            32, 1, 8, 1};
+        if (s == 1 && fx <= 32 && fy <= 1) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 4, 1, 32, 1, 32, 1, 8>)
+                .get(),
+            32, 1, 8, 1};
     }
     if (p.up.x() == 1 && p.up.y() == 1 && p.down.x() == 1 && p.down.y() == 4)
     {
         // contiguous
-        if (s != 1 && fx <= 1 && fy <= 48) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,4, 1,48, 32,8,1>, 32,8,1, 1};
-        if (s != 1 && fx <= 1 && fy <= 32) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,4, 1,32, 32,8,1>, 32,8,1, 1};
+        if (s != 1 && fx <= 1 && fy <= 48) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 4, 1, 48, 32, 8, 1>)
+                .get(),
+            32, 8, 1, 1};
+        if (s != 1 && fx <= 1 && fy <= 32) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 4, 1, 32, 32, 8, 1>)
+                .get(),
+            32, 8, 1, 1};
         // channels_last
-        if (s == 1 && fx <= 1  && fy <= 48) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,4, 1,48, 1,32,8>, 1,32,8, 1};
-        if (s == 1 && fx <= 1  && fy <= 32) spec = {(void*)upfirdn2d_kernel_small<T, 1,1, 1,4, 1,32, 1,32,8>, 1,32,8, 1};
+        if (s == 1 && fx <= 1 && fy <= 48) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 4, 1, 48, 1, 32, 8>)
+                .get(),
+            1, 32, 8, 1};
+        if (s == 1 && fx <= 1 && fy <= 32) spec = {
+            (void *)dpct::wrapper_register(
+                upfirdn2d_kernel_small_wrapper<T, 1, 1, 1, 4, 1, 32, 1, 32, 8>)
+                .get(),
+            1, 32, 8, 1};
     }
     return spec;
 }

@@ -24,7 +24,7 @@ template <> struct InternalType<c10::Half>  { typedef float  scalar_t; };
 
 template <class T, int A>
 /*
-DPCT1110:32: The total declared local variable size in device function
+DPCT1110:27: The total declared local variable size in device function
 bias_act_kernel exceeds 128 bytes and may cause high register pressure. Consult
 with your hardware vendor to find the total register size available and adjust
 the code, or use smaller sub-group size to avoid high register pressure.
@@ -166,20 +166,52 @@ void bias_act_kernel(bias_act_kernel_params p)
     }
 }
 
+// Auto generated SYCL kernel wrapper used to migration kernel function pointer.
+template <class T, int A>
+void bias_act_kernel_wrapper(bias_act_kernel_params p) {
+  sycl::queue queue = *dpct::kernel_launcher::_que;
+  unsigned int localMemSize = dpct::kernel_launcher::_local_mem_size;
+  sycl::nd_range<3> nr = dpct::kernel_launcher::_nr;
+
+  dpct::has_capability_or_fail(queue.get_device(), {sycl::aspect::fp64});
+
+  queue.parallel_for(nr, [=](sycl::nd_item<3> item_ct1) {
+    bias_act_kernel<T, A>(p);
+  });
+}
+
 //------------------------------------------------------------------------
 // CUDA kernel selection.
 
 template <class T> void* choose_bias_act_kernel(const bias_act_kernel_params& p)
 {
-    if (p.act == 1) return (void*)bias_act_kernel<T, 1>;
-    if (p.act == 2) return (void*)bias_act_kernel<T, 2>;
-    if (p.act == 3) return (void*)bias_act_kernel<T, 3>;
-    if (p.act == 4) return (void*)bias_act_kernel<T, 4>;
-    if (p.act == 5) return (void*)bias_act_kernel<T, 5>;
-    if (p.act == 6) return (void*)bias_act_kernel<T, 6>;
-    if (p.act == 7) return (void*)bias_act_kernel<T, 7>;
-    if (p.act == 8) return (void*)bias_act_kernel<T, 8>;
-    if (p.act == 9) return (void*)bias_act_kernel<T, 9>;
+    if (p.act ==
+        1) return (void *)dpct::wrapper_register(bias_act_kernel_wrapper<T, 1>)
+        .get();
+    if (p.act ==
+        2) return (void *)dpct::wrapper_register(bias_act_kernel_wrapper<T, 2>)
+        .get();
+    if (p.act ==
+        3) return (void *)dpct::wrapper_register(bias_act_kernel_wrapper<T, 3>)
+        .get();
+    if (p.act ==
+        4) return (void *)dpct::wrapper_register(bias_act_kernel_wrapper<T, 4>)
+        .get();
+    if (p.act ==
+        5) return (void *)dpct::wrapper_register(bias_act_kernel_wrapper<T, 5>)
+        .get();
+    if (p.act ==
+        6) return (void *)dpct::wrapper_register(bias_act_kernel_wrapper<T, 6>)
+        .get();
+    if (p.act ==
+        7) return (void *)dpct::wrapper_register(bias_act_kernel_wrapper<T, 7>)
+        .get();
+    if (p.act ==
+        8) return (void *)dpct::wrapper_register(bias_act_kernel_wrapper<T, 8>)
+        .get();
+    if (p.act ==
+        9) return (void *)dpct::wrapper_register(bias_act_kernel_wrapper<T, 9>)
+        .get();
     return NULL;
 }
 
