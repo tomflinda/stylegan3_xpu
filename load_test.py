@@ -34,6 +34,6 @@ def load_upfirdn2d():
     print(output)
 
 if __name__ == '__main__':
-    #load_bias()
+    load_bias()
     load_filtered_lrelu()
     load_upfirdn2d()
