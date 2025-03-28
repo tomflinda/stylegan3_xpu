@@ -8,6 +8,7 @@
 
 #include <sycl/sycl.hpp>
 #include <dpct/dpct.hpp>
+#include <c10/xpu/XPUStream.h>
 
 //------------------------------------------------------------------------
 // CUDA kernel parameters.

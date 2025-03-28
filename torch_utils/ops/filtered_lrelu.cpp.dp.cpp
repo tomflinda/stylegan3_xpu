@@ -8,12 +8,14 @@
 
 #include <sycl/sycl.hpp>
 #include <dpct/dpct.hpp>
+#include <c10/xpu/XPUStream.h>
 #include <torch/extension.h>
-#include "c10/xpu/XPUStream.h"
+#include <ATen/xpu/XPUContext.h>
 
-#include "c10/core/DeviceGuard.h"
+#include <c10/core/DeviceGuard.h>
 
 #include "filtered_lrelu.h"
+#include <c10/xpu/XPUStream.h>
 
 //------------------------------------------------------------------------
 
@@ -44,13 +46,19 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
     // Figure out how much shared memory is available on the device.
     int maxSharedBytes = 0;
     /*
-    DPCT1019:46: local_mem_size in SYCL is not a complete equivalent of
+    DPCT1009:49: SYCL reports errors using exceptions and does not use error
+    codes. Please replace the "get_error_string_dummy(...)" with a real
+    error-handling function.
+    */
+    /*
+    DPCT1019:48: local_mem_size in SYCL is not a complete equivalent of
     cudaDevAttrMaxSharedMemoryPerBlockOptin in CUDA. You may need to adjust the
     code.
     */
-    DPCT_CHECK_ERROR(
+    (DPCT_CHECK_ERROR(
         maxSharedBytes =
-            dpct::get_device(x.device().index()).get_local_mem_size());
+            dpct::get_device(x.device().index()).get_local_mem_size()));
+    maxSharedBytes = maxSharedBytes >> 2;
     int sharedKB = maxSharedBytes >> 10;
 
     // Populate enough launch parameters to check if a CUDA kernel exists.
@@ -157,8 +165,7 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
     p.fdStride =
         sycl::long3(fd.stride(-1), fd.dim() == 2 ? fd.stride(0) : 0, 0);
 
-    // Determine if indices don't fit in int32. Support negative strides
-    // although Torch currently never produces those.
+    // Determine if indices don't fit in int32. Support negative strides although Torch currently never produces those.
     bool index64b = false;
     if (std::abs(p.bStride * x.size(1)) > INT_MAX) index64b = true;
     if (std::min(x.size(0) * p.xStride.w(), 0l) +
@@ -234,22 +241,37 @@ static std::tuple<torch::Tensor, torch::Tensor, int> filtered_lrelu(
 
     // Set cache and shared memory configurations for main kernel.
     /*
-    DPCT1027:47: The call to cudaFuncSetCacheConfig was replaced with 0 because
+    DPCT1009:55: SYCL reports errors using exceptions and does not use error
+    codes. Please replace the "get_error_string_dummy(...)" with a real
+    error-handling function.
+    */
+    /*
+    DPCT1027:54: The call to cudaFuncSetCacheConfig was replaced with 0 because
     SYCL currently does not support configuring shared memory on devices.
     */
-    0;
+    (0);
     if (spec.dynamicSharedKB) // Need dynamically allocated shared memory?
         /*
-        DPCT1027:48: The call to cudaFuncSetAttribute was replaced with 0
+        DPCT1009:57: SYCL reports errors using exceptions and does not use error
+        codes. Please replace the "get_error_string_dummy(...)" with a real
+        error-handling function.
+        */
+        /*
+        DPCT1027:56: The call to cudaFuncSetAttribute was replaced with 0
         because SYCL currently does not support corresponding setting.
         */
-        0;
+        (0);
     /*
-    DPCT1027:49: The call to cudaFuncSetSharedMemConfig was replaced with 0
+    DPCT1009:59: SYCL reports errors using exceptions and does not use error
+    codes. Please replace the "get_error_string_dummy(...)" with a real
+    error-handling function.
+    */
+    /*
+    DPCT1027:58: The call to cudaFuncSetSharedMemConfig was replaced with 0
     because SYCL currently does not support configuring shared memory on
     devices.
     */
-    0;
+    (0);
 
     // Launch main kernel.
     const int maxSubGz = 65535; // CUDA maximum for block z dimension.
@@ -316,7 +338,7 @@ static torch::Tensor filtered_lrelu_act(torch::Tensor x, torch::Tensor si, int s
     p.sShape = (readSigns || writeSigns)
                    ? sycl::int2((int)s.size(3) << 2, (int)s.size(2))
                    : sycl::int2(0, 0); // Width is in elements. Contiguous.
-    p.sOfs = sycl::int2(sx, sy);
+    p.sOfs      = sycl::int2(sx, sy);
 
     // Choose CUDA kernel.
     void* func = 0;

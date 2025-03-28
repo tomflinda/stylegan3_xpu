@@ -53,7 +53,7 @@ def _should_use_custom_op(input):
     if _use_pytorch_1_11_api:
         # The work-around code doesn't work on PyTorch 1.11.0 onwards
         return False
-    if input.device.type != 'cuda':
+    if input.device.type != 'xpu':
         return False
     return True
 
@@ -118,7 +118,7 @@ def _conv2d_gradfix(transpose, weight_shape, stride, padding, output_padding, di
             ctx.input_shape = input.shape
 
             # Simple 1x1 convolution => cuBLAS (only on Volta, not on Ampere).
-            if weight_shape[2:] == stride == dilation == (1, 1) and padding == (0, 0) and torch.cuda.get_device_capability(input.device) < (8, 0):
+            if weight_shape[2:] == stride == dilation == (1, 1) and padding == (0, 0) and torch.xpu.get_device_capability(input.device) < (8, 0):
                 a = weight.reshape(groups, weight_shape[0] // groups, weight_shape[1])
                 b = input.reshape(input.shape[0], groups, input.shape[1] // groups, -1)
                 c = (a.transpose(1, 2) if transpose else a) @ b.permute(1, 2, 0, 3).flatten(2)

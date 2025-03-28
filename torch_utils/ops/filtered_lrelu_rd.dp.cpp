@@ -8,6 +8,7 @@
 
 #include <sycl/sycl.hpp>
 #include <dpct/dpct.hpp>
+#include <c10/xpu/XPUStream.h>
 #include "filtered_lrelu.dp.cpp"
 
 // Template/kernel specializations for sign read mode.

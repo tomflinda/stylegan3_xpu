@@ -8,6 +8,7 @@
 
 #include <sycl/sycl.hpp>
 #include <dpct/dpct.hpp>
+#include <c10/xpu/XPUStream.h>
 #include <c10/util/Half.h>
 #include "upfirdn2d.h"
 
@@ -121,7 +122,9 @@ void upfirdn2d_kernel_large_wrapper(upfirdn2d_kernel_params p) {
   unsigned int localMemSize = dpct::kernel_launcher::_local_mem_size;
   sycl::nd_range<3> nr = dpct::kernel_launcher::_nr;
 
-  dpct::has_capability_or_fail(queue.get_device(), {sycl::aspect::fp64});
+  dpct::has_capability_or_fail(
+      static_cast<sycl::queue &>(c10::xpu::getCurrentXPUStream()).get_device(),
+      {sycl::aspect::fp64, sycl::aspect::fp16});
 
   queue.parallel_for(nr, [=](sycl::nd_item<3> item_ct1) {
     upfirdn2d_kernel_large<T>(p);
@@ -134,7 +137,7 @@ void upfirdn2d_kernel_large_wrapper(upfirdn2d_kernel_params p) {
 template <class T, int upx, int upy, int downx, int downy, int filterW,
           int filterH, int tileOutW, int tileOutH, int loopMinor>
 /*
-DPCT1110:28: The total declared local variable size in device function
+DPCT1110:27: The total declared local variable size in device function
 upfirdn2d_kernel_small exceeds 128 bytes and may cause high register pressure.
 Consult with your hardware vendor to find the total register size available and
 adjust the code, or use smaller sub-group size to avoid high register pressure.
@@ -197,11 +200,11 @@ static void upfirdn2d_kernel_small(upfirdn2d_kernel_params p)
             int tileInX = floor_div(tileMidX, upx);
             int tileInY = floor_div(tileMidY, upy);
             /*
-            DPCT1118:29: SYCL group functions and algorithms must be encountered
+            DPCT1118:28: SYCL group functions and algorithms must be encountered
             in converged control flow. You may need to adjust the code.
             */
             /*
-            DPCT1065:44: Consider replacing sycl::nd_item::barrier() with
+            DPCT1065:45: Consider replacing sycl::nd_item::barrier() with
             sycl::nd_item::barrier(sycl::access::fence_space::local_space) for
             better performance if there is no access to global memory.
             */
@@ -230,11 +233,11 @@ static void upfirdn2d_kernel_small(upfirdn2d_kernel_params p)
 
             // Loop over output pixels.
             /*
-            DPCT1118:30: SYCL group functions and algorithms must be encountered
+            DPCT1118:29: SYCL group functions and algorithms must be encountered
             in converged control flow. You may need to adjust the code.
             */
             /*
-            DPCT1065:45: Consider replacing sycl::nd_item::barrier() with
+            DPCT1065:46: Consider replacing sycl::nd_item::barrier() with
             sycl::nd_item::barrier(sycl::access::fence_space::local_space) for
             better performance if there is no access to global memory.
             */
@@ -290,7 +293,9 @@ void upfirdn2d_kernel_small_wrapper(upfirdn2d_kernel_params p) {
   unsigned int localMemSize = dpct::kernel_launcher::_local_mem_size;
   sycl::nd_range<3> nr = dpct::kernel_launcher::_nr;
 
-  dpct::has_capability_or_fail(queue.get_device(), {sycl::aspect::fp64});
+  dpct::has_capability_or_fail(
+      static_cast<sycl::queue &>(c10::xpu::getCurrentXPUStream()).get_device(),
+      {sycl::aspect::fp64, sycl::aspect::fp16});
 
   queue.parallel_for(nr, [=](sycl::nd_item<3> item_ct1) {
     upfirdn2d_kernel_small<T, upx, upy, downx, downy, filterW, filterH,

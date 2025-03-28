@@ -8,12 +8,14 @@
 
 #include <sycl/sycl.hpp>
 #include <dpct/dpct.hpp>
+#include <c10/xpu/XPUStream.h>
 #include <torch/extension.h>
-#include "c10/xpu/XPUStream.h"
+#include <ATen/xpu/XPUContext.h>
 
-#include "c10/core/DeviceGuard.h"
+#include <c10/core/DeviceGuard.h>
 
 #include "bias_act.h"
+#include <c10/xpu/XPUStream.h>
 
 //------------------------------------------------------------------------
 

@@ -8,6 +8,7 @@
 
 #include <sycl/sycl.hpp>
 #include <dpct/dpct.hpp>
+#include <c10/xpu/XPUStream.h>
 #include <c10/util/Half.h>
 #include "bias_act.h"
 
@@ -24,7 +25,7 @@ template <> struct InternalType<c10::Half>  { typedef float  scalar_t; };
 
 template <class T, int A>
 /*
-DPCT1110:27: The total declared local variable size in device function
+DPCT1110:30: The total declared local variable size in device function
 bias_act_kernel exceeds 128 bytes and may cause high register pressure. Consult
 with your hardware vendor to find the total register size available and adjust
 the code, or use smaller sub-group size to avoid high register pressure.
@@ -173,7 +174,9 @@ void bias_act_kernel_wrapper(bias_act_kernel_params p) {
   unsigned int localMemSize = dpct::kernel_launcher::_local_mem_size;
   sycl::nd_range<3> nr = dpct::kernel_launcher::_nr;
 
-  dpct::has_capability_or_fail(queue.get_device(), {sycl::aspect::fp64});
+  dpct::has_capability_or_fail(
+      static_cast<sycl::queue &>(c10::xpu::getCurrentXPUStream()).get_device(),
+      {sycl::aspect::fp64, sycl::aspect::fp16});
 
   queue.parallel_for(nr, [=](sycl::nd_item<3> item_ct1) {
     bias_act_kernel<T, A>(p);

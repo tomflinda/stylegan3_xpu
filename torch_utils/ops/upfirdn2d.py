@@ -28,7 +28,7 @@ def _init():
             sources=['upfirdn2d.cpp.dp.cpp', 'upfirdn2d.dp.cpp'],
             headers=['upfirdn2d.h'],
             source_dir=os.path.dirname(__file__),
-            # extra_cuda_cflags=['--use_fast_math', '--allow-unsupported-compiler'],
+            extra_cuda_cflags=['--use_fast_math', '--allow-unsupported-compiler'],
         )
     return True
 
@@ -150,7 +150,7 @@ def upfirdn2d(x, f, up=1, down=1, padding=0, flip_filter=False, gain=1, impl='xp
                      (default: 0).
         flip_filter: False = convolution, True = correlation (default: False).
         gain:        Overall scaling factor for signal magnitude (default: 1).
-        impl:        Implementation to use. Can be `'ref'` or `'cuda'` (default: `'cuda'`).
+        impl:        Implementation to use. Can be `'ref'` or `'xpu'` (default: `'xpu'`).
 
     Returns:
         Tensor of the shape `[batch_size, num_channels, out_height, out_width]`.
@@ -274,7 +274,7 @@ def _upfirdn2d_cuda(up=1, down=1, padding=0, flip_filter=False, gain=1):
 
 #----------------------------------------------------------------------------
 
-def filter2d(x, f, padding=0, flip_filter=False, gain=1, impl='cuda'):
+def filter2d(x, f, padding=0, flip_filter=False, gain=1, impl='xpu'):
     r"""Filter a batch of 2D images using the given 2D FIR filter.
 
     By default, the result is padded so that its shape matches the input.
@@ -293,7 +293,7 @@ def filter2d(x, f, padding=0, flip_filter=False, gain=1, impl='cuda'):
                      (default: 0).
         flip_filter: False = convolution, True = correlation (default: False).
         gain:        Overall scaling factor for signal magnitude (default: 1).
-        impl:        Implementation to use. Can be `'ref'` or `'cuda'` (default: `'cuda'`).
+        impl:        Implementation to use. Can be `'ref'` or `'xpu'` (default: `'xpu'`).
 
     Returns:
         Tensor of the shape `[batch_size, num_channels, out_height, out_width]`.
@@ -310,7 +310,7 @@ def filter2d(x, f, padding=0, flip_filter=False, gain=1, impl='cuda'):
 
 #----------------------------------------------------------------------------
 
-def upsample2d(x, f, up=2, padding=0, flip_filter=False, gain=1, impl='cuda'):
+def upsample2d(x, f, up=2, padding=0, flip_filter=False, gain=1, impl='xpu'):
     r"""Upsample a batch of 2D images using the given 2D FIR filter.
 
     By default, the result is padded so that its shape is a multiple of the input.
@@ -331,7 +331,7 @@ def upsample2d(x, f, up=2, padding=0, flip_filter=False, gain=1, impl='cuda'):
                      (default: 0).
         flip_filter: False = convolution, True = correlation (default: False).
         gain:        Overall scaling factor for signal magnitude (default: 1).
-        impl:        Implementation to use. Can be `'ref'` or `'cuda'` (default: `'cuda'`).
+        impl:        Implementation to use. Can be `'ref'` or `'xpu'` (default: `'xpu'`).
 
     Returns:
         Tensor of the shape `[batch_size, num_channels, out_height, out_width]`.
@@ -349,7 +349,7 @@ def upsample2d(x, f, up=2, padding=0, flip_filter=False, gain=1, impl='cuda'):
 
 #----------------------------------------------------------------------------
 
-def downsample2d(x, f, down=2, padding=0, flip_filter=False, gain=1, impl='cuda'):
+def downsample2d(x, f, down=2, padding=0, flip_filter=False, gain=1, impl='xpu'):
     r"""Downsample a batch of 2D images using the given 2D FIR filter.
 
     By default, the result is padded so that its shape is a fraction of the input.
@@ -370,7 +370,7 @@ def downsample2d(x, f, down=2, padding=0, flip_filter=False, gain=1, impl='cuda'
                      (default: 0).
         flip_filter: False = convolution, True = correlation (default: False).
         gain:        Overall scaling factor for signal magnitude (default: 1).
-        impl:        Implementation to use. Can be `'ref'` or `'cuda'` (default: `'cuda'`).
+        impl:        Implementation to use. Can be `'ref'` or `'xpu'` (default: `'xpu'`).
 
     Returns:
         Tensor of the shape `[batch_size, num_channels, out_height, out_width]`.

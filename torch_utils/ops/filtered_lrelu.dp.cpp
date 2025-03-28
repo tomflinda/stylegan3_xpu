@@ -8,6 +8,7 @@
 
 #include <sycl/sycl.hpp>
 #include <dpct/dpct.hpp>
+#include <c10/xpu/XPUStream.h>
 #include <c10/util/Half.h>
 #include "filtered_lrelu.h"
 #include <cstdint>
@@ -92,10 +93,10 @@ template <class T> __dpct_inline__ T get_stride(const int64_t &x)
 #define MAX_FILTER_SIZE 32
 
 // Combined up/down filter buffers so that transfer can be done with one copy.
-static dpct::global_memory<float, 1> g_fbuf(
+inline dpct::global_memory<float, 1> g_fbuf(
     2 * MAX_FILTER_SIZE *
     MAX_FILTER_SIZE); // Filters in global memory, written by setup kernel.
-static dpct::constant_memory<float, 1>
+inline dpct::constant_memory<float, 1>
     c_fbuf(2 * MAX_FILTER_SIZE *
            MAX_FILTER_SIZE); // Filters in constant memory, read by main kernel.
 
@@ -143,7 +144,7 @@ static void setup_filters_kernel(filtered_lrelu_kernel_params p, float *g_fbuf)
 }
 
 // Auto generated SYCL kernel wrapper used to migration kernel function pointer.
-void setup_filters_kernel_wrapper(filtered_lrelu_kernel_params p) {
+inline  void setup_filters_kernel_wrapper(filtered_lrelu_kernel_params p) {
   sycl::queue queue = *dpct::kernel_launcher::_que;
   unsigned int localMemSize = dpct::kernel_launcher::_local_mem_size;
   sycl::nd_range<3> nr = dpct::kernel_launcher::_nr;
@@ -671,7 +672,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 migrate __shfl_xor_sync.
                                 */
                                 /*
-                                DPCT1096:50: The right-most dimension of the
+                                DPCT1096:62: The right-most dimension of the
                                 work-group used in the SYCL kernel that calls
                                 this function may be less than "32". The
                                 function "dpct::permute_sub_group_by_xor" may
@@ -693,7 +694,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 migrate __shfl_xor_sync.
                                 */
                                 /*
-                                DPCT1096:51: The right-most dimension of the
+                                DPCT1096:63: The right-most dimension of the
                                 work-group used in the SYCL kernel that calls
                                 this function may be less than "32". The
                                 function "dpct::permute_sub_group_by_xor" may
@@ -762,7 +763,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 migrate __shfl_xor_sync.
                                 */
                                 /*
-                                DPCT1096:52: The right-most dimension of the
+                                DPCT1096:64: The right-most dimension of the
                                 work-group used in the SYCL kernel that calls
                                 this function may be less than "32". The
                                 function "dpct::permute_sub_group_by_xor" may
@@ -784,7 +785,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 migrate __shfl_xor_sync.
                                 */
                                 /*
-                                DPCT1096:53: The right-most dimension of the
+                                DPCT1096:65: The right-most dimension of the
                                 work-group used in the SYCL kernel that calls
                                 this function may be less than "32". The
                                 function "dpct::permute_sub_group_by_xor" may
@@ -954,7 +955,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 migrate __shfl_xor_sync.
                                 */
                                 /*
-                                DPCT1096:54: The right-most dimension of the
+                                DPCT1096:66: The right-most dimension of the
                                 work-group used in the SYCL kernel that calls
                                 this function may be less than "32". The
                                 function "dpct::permute_sub_group_by_xor" may
@@ -976,7 +977,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 migrate __shfl_xor_sync.
                                 */
                                 /*
-                                DPCT1096:55: The right-most dimension of the
+                                DPCT1096:67: The right-most dimension of the
                                 work-group used in the SYCL kernel that calls
                                 this function may be less than "32". The
                                 function "dpct::permute_sub_group_by_xor" may
@@ -1027,7 +1028,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 migrate __shfl_xor_sync.
                                 */
                                 /*
-                                DPCT1096:56: The right-most dimension of the
+                                DPCT1096:68: The right-most dimension of the
                                 work-group used in the SYCL kernel that calls
                                 this function may be less than "32". The
                                 function "dpct::permute_sub_group_by_xor" may
@@ -1049,7 +1050,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 migrate __shfl_xor_sync.
                                 */
                                 /*
-                                DPCT1096:57: The right-most dimension of the
+                                DPCT1096:69: The right-most dimension of the
                                 work-group used in the SYCL kernel that calls
                                 this function may be less than "32". The
                                 function "dpct::permute_sub_group_by_xor" may
@@ -1412,7 +1413,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 migrate __shfl_xor_sync.
                                 */
                                 /*
-                                DPCT1096:58: The right-most dimension of the
+                                DPCT1096:70: The right-most dimension of the
                                 work-group used in the SYCL kernel that calls
                                 this function may be less than "32". The
                                 function "dpct::permute_sub_group_by_xor" may
@@ -1434,7 +1435,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 migrate __shfl_xor_sync.
                                 */
                                 /*
-                                DPCT1096:59: The right-most dimension of the
+                                DPCT1096:71: The right-most dimension of the
                                 work-group used in the SYCL kernel that calls
                                 this function may be less than "32". The
                                 function "dpct::permute_sub_group_by_xor" may
@@ -1477,7 +1478,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 migrate __shfl_xor_sync.
                                 */
                                 /*
-                                DPCT1096:60: The right-most dimension of the
+                                DPCT1096:72: The right-most dimension of the
                                 work-group used in the SYCL kernel that calls
                                 this function may be less than "32". The
                                 function "dpct::permute_sub_group_by_xor" may
@@ -1499,7 +1500,7 @@ static void filtered_lrelu_kernel(filtered_lrelu_kernel_params p,
                                 migrate __shfl_xor_sync.
                                 */
                                 /*
-                                DPCT1096:61: The right-most dimension of the
+                                DPCT1096:73: The right-most dimension of the
                                 work-group used in the SYCL kernel that calls
                                 this function may be less than "32". The
                                 function "dpct::permute_sub_group_by_xor" may
@@ -1780,6 +1781,10 @@ void filtered_lrelu_kernel_wrapper(filtered_lrelu_kernel_params p) {
 
   c_fbuf.init(queue);
 
+  dpct::has_capability_or_fail(
+      static_cast<sycl::queue &>(c10::xpu::getCurrentXPUStream()).get_device(),
+      {sycl::aspect::fp16});
+
   queue.submit([&](sycl::handler &cgh) {
     auto c_fbuf_ptr_ct1 = c_fbuf.get_ptr();
 
@@ -1787,7 +1792,7 @@ void filtered_lrelu_kernel_wrapper(filtered_lrelu_kernel_params p) {
         sycl::range<1>(localMemSize), cgh);
 
     cgh.parallel_for(nr, [=](sycl::nd_item<3>
-                                 item_ct1) [[intel::reqd_sub_group_size(32)]] {
+                                 item_ct1) [[sycl::reqd_sub_group_size(32)]] {
       filtered_lrelu_kernel<T, index_t, sharedKB, signWrite, signRead,
                             filterMode, up, fuSize, down, fdSize, tileOutW,
                             tileOutH, threadsPerBlock, enableXrep,
@@ -1878,7 +1883,7 @@ static void filtered_lrelu_act_kernel(filtered_lrelu_act_kernel_params p)
             experimental helper function to migrate __shfl_xor_sync.
             */
             /*
-            DPCT1096:62: The right-most dimension of the work-group used in the
+            DPCT1096:74: The right-most dimension of the work-group used in the
             SYCL kernel that calls this function may be less than "32". The
             function "dpct::permute_sub_group_by_xor" may return an unexpected
             result on the CPU device. Modify the size of the work-group to
@@ -1895,7 +1900,7 @@ static void filtered_lrelu_act_kernel(filtered_lrelu_act_kernel_params p)
             experimental helper function to migrate __shfl_xor_sync.
             */
             /*
-            DPCT1096:63: The right-most dimension of the work-group used in the
+            DPCT1096:75: The right-most dimension of the work-group used in the
             SYCL kernel that calls this function may be less than "32". The
             function "dpct::permute_sub_group_by_xor" may return an unexpected
             result on the CPU device. Modify the size of the work-group to
@@ -1911,7 +1916,7 @@ static void filtered_lrelu_act_kernel(filtered_lrelu_act_kernel_params p)
             experimental helper function to migrate __shfl_xor_sync.
             */
             /*
-            DPCT1096:64: The right-most dimension of the work-group used in the
+            DPCT1096:76: The right-most dimension of the work-group used in the
             SYCL kernel that calls this function may be less than "32". The
             function "dpct::permute_sub_group_by_xor" may return an unexpected
             result on the CPU device. Modify the size of the work-group to
@@ -1927,7 +1932,7 @@ static void filtered_lrelu_act_kernel(filtered_lrelu_act_kernel_params p)
             experimental helper function to migrate __shfl_xor_sync.
             */
             /*
-            DPCT1096:65: The right-most dimension of the work-group used in the
+            DPCT1096:77: The right-most dimension of the work-group used in the
             SYCL kernel that calls this function may be less than "32". The
             function "dpct::permute_sub_group_by_xor" may return an unexpected
             result on the CPU device. Modify the size of the work-group to
@@ -2011,10 +2016,12 @@ void filtered_lrelu_act_kernel_wrapper(filtered_lrelu_act_kernel_params p) {
   unsigned int localMemSize = dpct::kernel_launcher::_local_mem_size;
   sycl::nd_range<3> nr = dpct::kernel_launcher::_nr;
 
-  dpct::has_capability_or_fail(queue.get_device(), {sycl::aspect::fp64});
+  dpct::has_capability_or_fail(
+      static_cast<sycl::queue &>(c10::xpu::getCurrentXPUStream()).get_device(),
+      {sycl::aspect::fp64, sycl::aspect::fp16});
 
   queue.parallel_for(
-      nr, [=](sycl::nd_item<3> item_ct1) [[intel::reqd_sub_group_size(32)]] {
+      nr, [=](sycl::nd_item<3> item_ct1) [[sycl::reqd_sub_group_size(32)]] {
         filtered_lrelu_act_kernel<T, signWrite, signRead>(p);
       });
 }
